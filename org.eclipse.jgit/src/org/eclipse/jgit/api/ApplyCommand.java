@@ -370,8 +370,7 @@ public class ApplyCommand extends GitCommand<ApplyResult> {
 			applyTextPatch(f, fh);
 		}
 
-		getRepository().getFS().setExecute(f,
-				fh.getNewMode() == FileMode.EXECUTABLE_FILE);
+		getRepository().getFS().setExecute(f, fh.getNewMode() == FileMode.EXECUTABLE_FILE);
 	}
 
 	private boolean canApplyAt(List<String> hunkLines, List<String> newLines,
