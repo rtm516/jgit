@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2013 Christian Halstrick <christian.halstrick@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2013, 2020 Christian Halstrick <christian.halstrick@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.transport.http.apache;
 
@@ -58,17 +25,17 @@ import java.net.URL;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLException;
-import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 
@@ -91,17 +58,21 @@ import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
-import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.client.SystemDefaultCredentialsProvider;
 import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
+import org.apache.http.ssl.SSLContexts;
+import org.eclipse.jgit.annotations.NonNull;
 import org.eclipse.jgit.transport.http.HttpConnection;
 import org.eclipse.jgit.transport.http.apache.internal.HttpApacheText;
+import org.eclipse.jgit.util.HttpSupport;
 import org.eclipse.jgit.util.TemporaryBuffer;
 import org.eclipse.jgit.util.TemporaryBuffer.LocalFile;
 
 /**
- * A {@link HttpConnection} which uses {@link HttpClient}
+ * A {@link org.eclipse.jgit.transport.http.HttpConnection} which uses
+ * {@link org.apache.http.client.HttpClient}
  *
  * @since 3.3
  */
@@ -128,9 +99,13 @@ public class HttpClientConnection implements HttpConnection {
 
 	private Boolean followRedirects;
 
-	private X509HostnameVerifier hostnameverifier;
+	private HostnameVerifier hostnameverifier;
 
-	SSLContext ctx;
+	private SSLContext ctx;
+
+	private SSLConnectionSocketFactory socketFactory;
+
+	private boolean usePooling = true;
 
 	private HttpClient getClient() {
 		if (client == null) {
@@ -152,10 +127,18 @@ public class HttpClientConnection implements HttpConnection {
 				configBuilder
 						.setRedirectsEnabled(followRedirects.booleanValue());
 			}
-			if (hostnameverifier != null) {
-				SSLConnectionSocketFactory sslConnectionFactory = new SSLConnectionSocketFactory(
-						getSSLContext(), hostnameverifier);
-				clientBuilder.setSSLSocketFactory(sslConnectionFactory);
+			boolean pooled = true;
+			SSLConnectionSocketFactory sslConnectionFactory;
+			if (socketFactory != null) {
+				pooled = usePooling;
+				sslConnectionFactory = socketFactory;
+			} else {
+				// Legacy implementation.
+				pooled = (hostnameverifier == null);
+				sslConnectionFactory = getSSLSocketFactory();
+			}
+			clientBuilder.setSSLSocketFactory(sslConnectionFactory);
+			if (!pooled) {
 				Registry<ConnectionSocketFactory> registry = RegistryBuilder
 						.<ConnectionSocketFactory> create()
 						.register("https", sslConnectionFactory)
@@ -165,10 +148,43 @@ public class HttpClientConnection implements HttpConnection {
 						new BasicHttpClientConnectionManager(registry));
 			}
 			clientBuilder.setDefaultRequestConfig(configBuilder.build());
+			clientBuilder.setDefaultCredentialsProvider(
+					new SystemDefaultCredentialsProvider());
 			client = clientBuilder.build();
 		}
 
 		return client;
+	}
+
+	void setSSLSocketFactory(@NonNull SSLConnectionSocketFactory factory,
+			boolean isDefault) {
+		socketFactory = factory;
+		usePooling = isDefault;
+	}
+
+	private SSLConnectionSocketFactory getSSLSocketFactory() {
+		HostnameVerifier verifier = hostnameverifier;
+		SSLContext context;
+		if (verifier == null) {
+			// Use defaults
+			context = SSLContexts.createSystemDefault();
+			verifier = SSLConnectionSocketFactory.getDefaultHostnameVerifier();
+		} else {
+			// Using a custom verifier. Attention: configure() must have been
+			// called already, otherwise one gets a "context not initialized"
+			// exception. In JGit this branch is reached only when hostname
+			// verification is switched off, and JGit _does_ call configure()
+			// before we get here.
+			context = getSSLContext();
+		}
+		return new SSLConnectionSocketFactory(context, verifier) {
+
+			@Override
+			protected void prepareSocket(SSLSocket socket) throws IOException {
+				super.prepareSocket(socket);
+				HttpSupport.configureTLS(socket);
+			}
+		};
 	}
 
 	private SSLContext getSSLContext() {
@@ -193,6 +209,8 @@ public class HttpClientConnection implements HttpConnection {
 	}
 
 	/**
+	 * Constructor for HttpClientConnection.
+	 *
 	 * @param urlStr
 	 * @throws MalformedURLException
 	 */
@@ -201,6 +219,8 @@ public class HttpClientConnection implements HttpConnection {
 	}
 
 	/**
+	 * Constructor for HttpClientConnection.
+	 *
 	 * @param urlStr
 	 * @param proxy
 	 * @throws MalformedURLException
@@ -211,6 +231,8 @@ public class HttpClientConnection implements HttpConnection {
 	}
 
 	/**
+	 * Constructor for HttpClientConnection.
+	 *
 	 * @param urlStr
 	 * @param proxy
 	 * @param cl
@@ -223,15 +245,21 @@ public class HttpClientConnection implements HttpConnection {
 		this.proxy = proxy;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public int getResponseCode() throws IOException {
 		execute();
 		return resp.getStatusLine().getStatusCode();
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public URL getURL() {
 		return url;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public String getResponseMessage() throws IOException {
 		execute();
 		return resp.getStatusLine().getReasonPhrase();
@@ -259,21 +287,31 @@ public class HttpClientConnection implements HttpConnection {
 		}
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public Map<String, List<String>> getHeaderFields() {
-		Map<String, List<String>> ret = new HashMap<String, List<String>>();
+		Map<String, List<String>> ret = new HashMap<>();
 		for (Header hdr : resp.getAllHeaders()) {
-			List<String> list = new LinkedList<String>();
-			for (HeaderElement hdrElem : hdr.getElements())
+			List<String> list = ret.get(hdr.getName());
+			if (list == null) {
+				list = new LinkedList<>();
+				ret.put(hdr.getName(), list);
+			}
+			for (HeaderElement hdrElem : hdr.getElements()) {
 				list.add(hdrElem.toString());
-			ret.put(hdr.getName(), list);
+			}
 		}
 		return ret;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setRequestProperty(String name, String value) {
 		req.addHeader(name, value);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setRequestMethod(String method) throws ProtocolException {
 		this.method = method;
 		if (METHOD_GET.equalsIgnoreCase(method)) {
@@ -290,18 +328,26 @@ public class HttpClientConnection implements HttpConnection {
 		}
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setUseCaches(boolean usecaches) {
 		// not needed
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setConnectTimeout(int timeout) {
 		this.timeout = Integer.valueOf(timeout);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setReadTimeout(int readTimeout) {
 		this.readTimeout = Integer.valueOf(readTimeout);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public String getContentType() {
 		HttpEntity responseEntity = resp.getEntity();
 		if (responseEntity != null) {
@@ -312,16 +358,29 @@ public class HttpClientConnection implements HttpConnection {
 		return null;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public InputStream getInputStream() throws IOException {
+		execute();
 		return resp.getEntity().getContent();
 	}
 
 	// will return only the first field
-	public String getHeaderField(String name) {
+	/** {@inheritDoc} */
+	@Override
+	public String getHeaderField(@NonNull String name) {
 		Header header = resp.getFirstHeader(name);
 		return (header == null) ? null : header.getValue();
 	}
 
+	@Override
+	public List<String> getHeaderFields(@NonNull String name) {
+		return Collections.unmodifiableList(Arrays.asList(resp.getHeaders(name))
+				.stream().map(Header::getValue).collect(Collectors.toList()));
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public int getContentLength() {
 		Header contentLength = resp.getFirstHeader("content-length"); //$NON-NLS-1$
 		if (contentLength == null) {
@@ -336,14 +395,20 @@ public class HttpClientConnection implements HttpConnection {
 		}
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setInstanceFollowRedirects(boolean followRedirects) {
 		this.followRedirects = Boolean.valueOf(followRedirects);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setDoOutput(boolean dooutput) {
 		// TODO: check whether we can really ignore this.
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setFixedLengthStreamingMode(int contentLength) {
 		if (entity != null)
 			throw new IllegalArgumentException();
@@ -351,52 +416,48 @@ public class HttpClientConnection implements HttpConnection {
 		entity.setContentLength(contentLength);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public OutputStream getOutputStream() throws IOException {
 		if (entity == null)
 			entity = new TemporaryBufferEntity(new LocalFile(null));
 		return entity.getBuffer();
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void setChunkedStreamingMode(int chunklen) {
 		if (entity == null)
 			entity = new TemporaryBufferEntity(new LocalFile(null));
 		entity.setChunked(true);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public String getRequestMethod() {
 		return method;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public boolean usingProxy() {
 		return isUsingProxy;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void connect() throws IOException {
 		execute();
 	}
 
-	public void setHostnameVerifier(final HostnameVerifier hostnameverifier) {
-		this.hostnameverifier = new X509HostnameVerifier() {
-			public boolean verify(String hostname, SSLSession session) {
-				return hostnameverifier.verify(hostname, session);
-			}
-
-			public void verify(String host, String[] cns, String[] subjectAlts)
-					throws SSLException {
-				throw new UnsupportedOperationException(); // TODO message
-			}
-
-			public void verify(String host, X509Certificate cert)
-					throws SSLException {
-				throw new UnsupportedOperationException(); // TODO message
-			}
-
-			public void verify(String host, SSLSocket ssl) throws IOException {
-				hostnameverifier.verify(host, ssl.getSession());
-			}
-		};
+	/** {@inheritDoc} */
+	@Override
+	public void setHostnameVerifier(HostnameVerifier hostnameverifier) {
+		this.hostnameverifier = hostnameverifier;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void configure(KeyManager[] km, TrustManager[] tm,
 			SecureRandom random) throws KeyManagementException {
 		getSSLContext().init(km, tm, random);

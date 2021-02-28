@@ -1,47 +1,15 @@
 /*
- * Copyright (C) 2010, Mathias Kinzler <mathias.kinzler@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, Mathias Kinzler <mathias.kinzler@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -345,13 +313,11 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** global rebase config should be respected */
 	public void testPullWithRebasePreserve1Config() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("pull", null, "rebase", "preserve");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("pull", null, "rebase", "preserve");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.REBASE_PREASERVE);
 	}
@@ -359,14 +325,12 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** the branch-local config should win over the global config */
 	public void testPullWithRebasePreserveConfig2() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("pull", null, "rebase", "false");
-				config.setString("branch", "master", "rebase", "preserve");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("pull", null, "rebase", "false");
+			config.setString("branch", "master", "rebase", "preserve");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.REBASE_PREASERVE);
 	}
@@ -374,13 +338,11 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** the branch-local config should be respected */
 	public void testPullWithRebasePreserveConfig3() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("branch", "master", "rebase", "preserve");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("branch", "master", "rebase", "preserve");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.REBASE_PREASERVE);
 	}
@@ -388,13 +350,11 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** global rebase config should be respected */
 	public void testPullWithRebaseConfig1() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("pull", null, "rebase", "true");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("pull", null, "rebase", "true");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.REBASE);
 	}
@@ -402,14 +362,12 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** the branch-local config should win over the global config */
 	public void testPullWithRebaseConfig2() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("pull", null, "rebase", "preserve");
-				config.setString("branch", "master", "rebase", "true");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("pull", null, "rebase", "preserve");
+			config.setString("branch", "master", "rebase", "true");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.REBASE);
 	}
@@ -417,13 +375,11 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** the branch-local config should be respected */
 	public void testPullWithRebaseConfig3() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("branch", "master", "rebase", "true");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("branch", "master", "rebase", "true");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.REBASE);
 	}
@@ -431,25 +387,19 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** without config it should merge */
 	public void testPullWithoutConfig() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				return target.pull().call();
-			}
-		};
+		Callable<PullResult> setup = target.pull()::call;
 		doTestPullWithRebase(setup, TestPullMode.MERGE);
 	}
 
 	@Test
 	/** the branch local config should win over the global config */
 	public void testPullWithMergeConfig() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("pull", null, "rebase", "true");
-				config.setString("branch", "master", "rebase", "false");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("pull", null, "rebase", "true");
+			config.setString("branch", "master", "rebase", "false");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.MERGE);
 	}
@@ -457,13 +407,11 @@ public class PullCommandTest extends RepositoryTestCase {
 	@Test
 	/** the branch local config should win over the global config */
 	public void testPullWithMergeConfig2() throws Exception {
-		Callable<PullResult> setup = new Callable<PullResult>() {
-			public PullResult call() throws Exception {
-				StoredConfig config = dbTarget.getConfig();
-				config.setString("pull", null, "rebase", "false");
-				config.save();
-				return target.pull().call();
-			}
+		Callable<PullResult> setup = () -> {
+			StoredConfig config = dbTarget.getConfig();
+			config.setString("pull", null, "rebase", "false");
+			config.save();
+			return target.pull().call();
 		};
 		doTestPullWithRebase(setup, TestPullMode.MERGE);
 	}
@@ -581,34 +529,23 @@ public class PullCommandTest extends RepositoryTestCase {
 
 	private static void writeToFile(File actFile, String string)
 			throws IOException {
-		FileOutputStream fos = null;
-		try {
-			fos = new FileOutputStream(actFile);
-			fos.write(string.getBytes("UTF-8"));
-			fos.close();
-		} finally {
-			if (fos != null)
-				fos.close();
+		try (FileOutputStream fos = new FileOutputStream(actFile)) {
+			fos.write(string.getBytes(UTF_8));
 		}
 	}
 
 	private static void assertFileContentsEqual(File actFile, String string)
 			throws IOException {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
-		FileInputStream fis = null;
 		byte[] buffer = new byte[100];
-		try {
-			fis = new FileInputStream(actFile);
+		try (FileInputStream fis = new FileInputStream(actFile)) {
 			int read = fis.read(buffer);
 			while (read > 0) {
 				bos.write(buffer, 0, read);
 				read = fis.read(buffer);
 			}
-			String content = new String(bos.toByteArray(), "UTF-8");
+			String content = new String(bos.toByteArray(), UTF_8);
 			assertEquals(string, content);
-		} finally {
-			if (fis != null)
-				fis.close();
 		}
 	}
 }

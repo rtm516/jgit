@@ -1,48 +1,16 @@
 /*
- * Copyright (C) 2008-2009, Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008-2009, Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.revwalk;
 
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -106,18 +74,18 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		body.append("\n");
 
-		final RevWalk rw = new RevWalk(db);
 		final RevCommit c;
 
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
 		assertNull(c.getTree());
 		assertNull(c.parents);
 
-		c.parseCanonical(rw, body.toString().getBytes("UTF-8"));
-		assertNotNull(c.getTree());
-		assertEquals(treeId, c.getTree().getId());
-		assertSame(rw.lookupTree(treeId), c.getTree());
-
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, body.toString().getBytes(UTF_8));
+			assertNotNull(c.getTree());
+			assertEquals(treeId, c.getTree().getId());
+			assertSame(rw.lookupTree(treeId), c.getTree());
+		}
 		assertNotNull(c.parents);
 		assertEquals(0, c.parents.length);
 		assertEquals("", c.getFullMessage());
@@ -137,7 +105,7 @@ public class RevCommitParseTest extends RepositoryTestCase {
 		assertEquals(TimeZone.getTimeZone("GMT" + committerTimeZone), cCommitter.getTimeZone());
 	}
 
-	private RevCommit create(final String msg) throws Exception {
+	private RevCommit create(String msg) throws Exception {
 		final StringBuilder b = new StringBuilder();
 		b.append("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n");
 		b.append("author A U. Thor <a_u_thor@example.com> 1218123387 +0700\n");
@@ -147,8 +115,10 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
-		c.parseCanonical(new RevWalk(db), b.toString().getBytes("UTF-8"));
-		return c;
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toString().getBytes(UTF_8));
+			return c;
+		}
 	}
 
 	@Test
@@ -160,8 +130,9 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
-		c.parseCanonical(new RevWalk(db), b.toString().getBytes("UTF-8"));
-
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toString().getBytes(UTF_8));
+		}
 		assertEquals("", c.getFullMessage());
 		assertEquals("", c.getShortMessage());
 	}
@@ -175,8 +146,9 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
-		c.parseCanonical(new RevWalk(db), b.toString().getBytes("UTF-8"));
-
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toString().getBytes(UTF_8));
+		}
 		assertEquals(new PersonIdent("", "a_u_thor@example.com", 1218123387000l, 7), c.getAuthorIdent());
 		assertEquals(new PersonIdent("", "", 1218123390000l, -5), c.getCommitterIdent());
 	}
@@ -184,18 +156,19 @@ public class RevCommitParseTest extends RepositoryTestCase {
 	@Test
 	public void testParse_implicit_UTF8_encoded() throws Exception {
 		final ByteArrayOutputStream b = new ByteArrayOutputStream();
-		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes("UTF-8"));
-		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes("UTF-8"));
-		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("Sm\u00f6rg\u00e5sbord\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("\u304d\u308c\u3044\n".getBytes("UTF-8"));
+		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes(UTF_8));
+		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes(UTF_8));
+		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("Sm\u00f6rg\u00e5sbord\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("\u304d\u308c\u3044\n".getBytes(UTF_8));
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67")); // bogus id
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
-
-		assertSame(Constants.CHARSET, c.getEncoding());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
+		assertSame(UTF_8, c.getEncoding());
 		assertEquals("F\u00f6r fattare", c.getAuthorIdent().getName());
 		assertEquals("Sm\u00f6rg\u00e5sbord", c.getShortMessage());
 		assertEquals("Sm\u00f6rg\u00e5sbord\n\n\u304d\u308c\u3044\n", c.getFullMessage());
@@ -204,18 +177,19 @@ public class RevCommitParseTest extends RepositoryTestCase {
 	@Test
 	public void testParse_implicit_mixed_encoded() throws Exception {
 		final ByteArrayOutputStream b = new ByteArrayOutputStream();
-		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes("UTF-8"));
-		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes("ISO-8859-1"));
-		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("Sm\u00f6rg\u00e5sbord\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("\u304d\u308c\u3044\n".getBytes("UTF-8"));
+		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes(UTF_8));
+		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes(ISO_8859_1));
+		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("Sm\u00f6rg\u00e5sbord\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("\u304d\u308c\u3044\n".getBytes(UTF_8));
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67")); // bogus id
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
-
-		assertSame(Constants.CHARSET, c.getEncoding());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
+		assertSame(UTF_8, c.getEncoding());
 		assertEquals("F\u00f6r fattare", c.getAuthorIdent().getName());
 		assertEquals("Sm\u00f6rg\u00e5sbord", c.getShortMessage());
 		assertEquals("Sm\u00f6rg\u00e5sbord\n\n\u304d\u308c\u3044\n", c.getFullMessage());
@@ -239,7 +213,9 @@ public class RevCommitParseTest extends RepositoryTestCase {
 		b.write("Hi\n".getBytes("EUC-JP"));
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67")); // bogus id
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
 
 		assertEquals("EUC-JP", c.getEncoding().name());
 		assertEquals("F\u00f6r fattare", c.getAuthorIdent().getName());
@@ -259,17 +235,19 @@ public class RevCommitParseTest extends RepositoryTestCase {
 	@Test
 	public void testParse_explicit_bad_encoded() throws Exception {
 		final ByteArrayOutputStream b = new ByteArrayOutputStream();
-		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes("UTF-8"));
-		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes("ISO-8859-1"));
-		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes("UTF-8"));
-		b.write("encoding EUC-JP\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("\u304d\u308c\u3044\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("Hi\n".getBytes("UTF-8"));
+		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes(UTF_8));
+		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes(ISO_8859_1));
+		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes(UTF_8));
+		b.write("encoding EUC-JP\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("\u304d\u308c\u3044\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("Hi\n".getBytes(UTF_8));
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67")); // bogus id
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
 
 		assertEquals("EUC-JP", c.getEncoding().name());
 		assertEquals("F\u00f6r fattare", c.getAuthorIdent().getName());
@@ -290,17 +268,19 @@ public class RevCommitParseTest extends RepositoryTestCase {
 	@Test
 	public void testParse_explicit_bad_encoded2() throws Exception {
 		final ByteArrayOutputStream b = new ByteArrayOutputStream();
-		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes("UTF-8"));
-		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes("UTF-8"));
-		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes("UTF-8"));
-		b.write("encoding ISO-8859-1\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("\u304d\u308c\u3044\n".getBytes("UTF-8"));
-		b.write("\n".getBytes("UTF-8"));
-		b.write("Hi\n".getBytes("UTF-8"));
+		b.write("tree 9788669ad918b6fcce64af8882fc9a81cb6aba67\n".getBytes(UTF_8));
+		b.write("author F\u00f6r fattare <a_u_thor@example.com> 1218123387 +0700\n".getBytes(UTF_8));
+		b.write("committer C O. Miter <c@example.com> 1218123390 -0500\n".getBytes(UTF_8));
+		b.write("encoding ISO-8859-1\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("\u304d\u308c\u3044\n".getBytes(UTF_8));
+		b.write("\n".getBytes(UTF_8));
+		b.write("Hi\n".getBytes(UTF_8));
 		final RevCommit c;
 		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67")); // bogus id
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
 
 		assertEquals("ISO-8859-1", c.getEncoding().name());
 		assertEquals("F\u00f6r fattare", c.getAuthorIdent().getName());
@@ -322,7 +302,9 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		RevCommit c = new RevCommit(
 				id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
 		assertEquals("'utf8'", c.getEncodingName());
 		assertEquals("Sm\u00f6rg\u00e5sbord\n", c.getFullMessage());
 
@@ -346,7 +328,9 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		RevCommit c = new RevCommit(
 				id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
 		assertEquals("utf-8logoutputencoding=gbk", c.getEncodingName());
 		assertEquals("message\n", c.getFullMessage());
 		assertEquals("message", c.getShortMessage());
@@ -373,7 +357,9 @@ public class RevCommitParseTest extends RepositoryTestCase {
 
 		RevCommit c = new RevCommit(
 				id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
-		c.parseCanonical(new RevWalk(db), b.toByteArray());
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, b.toByteArray());
+		}
 		assertEquals("it_IT.UTF8", c.getEncodingName());
 		assertEquals("message\n", c.getFullMessage());
 		assertEquals("message", c.getShortMessage());
@@ -482,7 +468,41 @@ public class RevCommitParseTest extends RepositoryTestCase {
 		assertEquals(shortMsg, c.getShortMessage());
 	}
 
-	private static ObjectId id(final String str) {
+	private static ObjectId id(String str) {
 		return ObjectId.fromString(str);
+	}
+
+	@Test
+	public void testParse_gpgSig() throws Exception {
+		String commit = "tree e3a1035abd2b319bb01e57d69b0ba6cab289297e\n" +
+		"parent 54e895b87c0768d2317a2b17062e3ad9f76a8105\n" +
+		"committer A U Thor <author@xample.com 1528968566 +0200\n" +
+		"gpgsig -----BEGIN PGP SIGNATURE-----\n" +
+		" \n" +
+		" wsBcBAABCAAQBQJbGB4pCRBK7hj4Ov3rIwAAdHIIAENrvz23867ZgqrmyPemBEZP\n" +
+		" U24B1Tlq/DWvce2buaxmbNQngKZ0pv2s8VMc11916WfTIC9EKvioatmpjduWvhqj\n" +
+		" znQTFyiMor30pyYsfrqFuQZvqBW01o8GEWqLg8zjf9Rf0R3LlOEw86aT8CdHRlm6\n" +
+		" wlb22xb8qoX4RB+LYfz7MhK5F+yLOPXZdJnAVbuyoMGRnDpwdzjL5Hj671+XJxN5\n" +
+		" SasRdhxkkfw/ZnHxaKEc4juMz8Nziz27elRwhOQqlTYoXNJnsV//wy5Losd7aKi1\n" +
+		" xXXyUpndEOmT0CIcKHrN/kbYoVL28OJaxoBuva3WYQaRrzEe3X02NMxZe9gkSqA=\n" +
+		" =TClh\n" +
+		" -----END PGP SIGNATURE-----\n" +
+		"some other header\n\n" +
+		"commit message";
+
+		final RevCommit c;
+		c = new RevCommit(id("9473095c4cb2f12aefe1db8a355fe3fafba42f67"));
+		try (RevWalk rw = new RevWalk(db)) {
+			c.parseCanonical(rw, commit.getBytes(UTF_8));
+		}
+		String gpgSig = new String(c.getRawGpgSignature(), UTF_8);
+		assertTrue(gpgSig.startsWith("-----BEGIN"));
+		assertTrue(gpgSig.endsWith("END PGP SIGNATURE-----"));
+	}
+
+	@Test
+	public void testParse_NoGpgSig() throws Exception {
+		final RevCommit c = create("a message");
+		assertNull(c.getRawGpgSignature());
 	}
 }

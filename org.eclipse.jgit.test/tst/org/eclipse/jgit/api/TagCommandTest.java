@@ -1,48 +1,19 @@
 /*
- * Copyright (C) 2010, 2013 Chris Aniszczyk <caniszczyk@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, 2020 Chris Aniszczyk <caniszczyk@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
+import static org.eclipse.jgit.lib.Constants.R_TAGS;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
@@ -51,8 +22,10 @@ import java.util.List;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.InvalidTagNameException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
+import org.eclipse.jgit.api.errors.RefAlreadyExistsException;
 import org.eclipse.jgit.junit.RepositoryTestCase;
 import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -61,24 +34,80 @@ import org.junit.Test;
 public class TagCommandTest extends RepositoryTestCase {
 
 	@Test
+	public void testTagKind() {
+		try (Git git = new Git(db)) {
+			assertTrue(git.tag().isAnnotated());
+			assertTrue(git.tag().setSigned(true).isAnnotated());
+			assertTrue(git.tag().setSigned(false).isAnnotated());
+			assertTrue(git.tag().setSigningKey(null).isAnnotated());
+			assertTrue(git.tag().setSigningKey("something").isAnnotated());
+			assertTrue(git.tag().setSigned(false).setSigningKey(null)
+					.isAnnotated());
+			assertTrue(git.tag().setSigned(false).setSigningKey("something")
+					.isAnnotated());
+			assertTrue(git.tag().setSigned(true).setSigningKey(null)
+					.isAnnotated());
+			assertTrue(git.tag().setSigned(true).setSigningKey("something")
+					.isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).isAnnotated());
+			assertTrue(
+					git.tag().setAnnotated(true).setSigned(true).isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigned(false)
+					.isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigningKey(null)
+					.isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigningKey("something")
+					.isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigned(false)
+					.setSigningKey(null).isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigned(false)
+					.setSigningKey("something").isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigned(true)
+					.setSigningKey(null).isAnnotated());
+			assertTrue(git.tag().setAnnotated(true).setSigned(true)
+					.setSigningKey("something").isAnnotated());
+			assertFalse(git.tag().setAnnotated(false).isAnnotated());
+			assertTrue(git.tag().setAnnotated(false).setSigned(true)
+					.isAnnotated());
+			assertFalse(git.tag().setAnnotated(false).setSigned(false)
+					.isAnnotated());
+			assertFalse(git.tag().setAnnotated(false).setSigningKey(null)
+					.isAnnotated());
+			assertTrue(git.tag().setAnnotated(false).setSigningKey("something")
+					.isAnnotated());
+			assertFalse(git.tag().setAnnotated(false).setSigned(false)
+					.setSigningKey(null).isAnnotated());
+			assertTrue(git.tag().setAnnotated(false).setSigned(false)
+					.setSigningKey("something").isAnnotated());
+			assertTrue(git.tag().setAnnotated(false).setSigned(true)
+					.setSigningKey(null).isAnnotated());
+			assertTrue(git.tag().setAnnotated(false).setSigned(true)
+					.setSigningKey("something").isAnnotated());
+		}
+	}
+
+	@Test
 	public void testTaggingOnHead() throws GitAPIException, IOException {
 		try (Git git = new Git(db);
 				RevWalk walk = new RevWalk(db)) {
 			RevCommit commit = git.commit().setMessage("initial commit").call();
 			Ref tagRef = git.tag().setName("tag").call();
-			assertEquals(commit.getId(), db.peel(tagRef).getPeeledObjectId());
+			assertEquals(commit.getId(),
+					db.getRefDatabase().peel(tagRef).getPeeledObjectId());
 			assertEquals("tag", walk.parseTag(tagRef.getObjectId()).getTagName());
 		}
 	}
 
 	@Test
-	public void testTagging() throws GitAPIException, JGitInternalException {
+	public void testTagging()
+			throws GitAPIException, JGitInternalException, IOException {
 		try (Git git = new Git(db)) {
 			git.commit().setMessage("initial commit").call();
 			RevCommit commit = git.commit().setMessage("second commit").call();
 			git.commit().setMessage("third commit").call();
 			Ref tagRef = git.tag().setObjectId(commit).setName("tag").call();
-			assertEquals(commit.getId(), db.peel(tagRef).getPeeledObjectId());
+			assertEquals(commit.getId(),
+					db.getRefDatabase().peel(tagRef).getPeeledObjectId());
 		}
 	}
 
@@ -92,6 +121,29 @@ public class TagCommandTest extends RepositoryTestCase {
 			Ref tagRef = git.tag().setObjectId(commit).setName("tag")
 					.setAnnotated(false).call();
 			assertEquals(commit.getId(), tagRef.getObjectId());
+		}
+	}
+
+	@Test
+	public void testForceNoChangeLightweight() throws GitAPIException {
+		try (Git git = new Git(db)) {
+			git.commit().setMessage("initial commit").call();
+			RevCommit commit = git.commit().setMessage("second commit").call();
+			git.commit().setMessage("third commit").call();
+			Ref tagRef = git.tag().setObjectId(commit).setName("tag")
+					.setAnnotated(false).call();
+			assertEquals(commit.getId(), tagRef.getObjectId());
+			// Without force, we want to get a RefAlreadyExistsException
+			RefAlreadyExistsException e = assertThrows(
+					RefAlreadyExistsException.class,
+					() -> git.tag().setObjectId(commit).setName("tag")
+							.setAnnotated(false).call());
+			assertEquals(RefUpdate.Result.NO_CHANGE, e.getUpdateResult());
+			// With force the call should work
+			assertEquals(commit.getId(),
+					git.tag().setObjectId(commit).setName("tag")
+							.setAnnotated(false).setForceUpdate(true).call()
+							.getObjectId());
 		}
 	}
 
@@ -122,17 +174,8 @@ public class TagCommandTest extends RepositoryTestCase {
 		}
 	}
 
-	@Test
-	public void testFailureOnSignedTags() throws GitAPIException {
-		try (Git git = new Git(db)) {
-			git.commit().setMessage("initial commit").call();
-			try {
-				git.tag().setSigned(true).setName("tag").call();
-				fail("We should have failed with an UnsupportedOperationException due to signed tag");
-			} catch (UnsupportedOperationException e) {
-				// should hit here
-			}
-		}
+	private List<Ref> getTags() throws Exception {
+		return db.getRefDatabase().getRefsByPrefix(R_TAGS);
 	}
 
 	@Test
@@ -140,21 +183,21 @@ public class TagCommandTest extends RepositoryTestCase {
 		try (Git git = new Git(db)) {
 			git.commit().setMessage("initial commit").call();
 			Ref tagRef = git.tag().setName("tag").call();
-			assertEquals(1, db.getTags().size());
+			assertEquals(1, getTags().size());
 
 			List<String> deleted = git.tagDelete().setTags(tagRef.getName())
 					.call();
 			assertEquals(1, deleted.size());
 			assertEquals(tagRef.getName(), deleted.get(0));
-			assertEquals(0, db.getTags().size());
+			assertEquals(0, getTags().size());
 
 			Ref tagRef1 = git.tag().setName("tag1").call();
 			Ref tagRef2 = git.tag().setName("tag2").call();
-			assertEquals(2, db.getTags().size());
+			assertEquals(2, getTags().size());
 			deleted = git.tagDelete().setTags(tagRef1.getName(), tagRef2.getName())
 					.call();
 			assertEquals(2, deleted.size());
-			assertEquals(0, db.getTags().size());
+			assertEquals(0, getTags().size());
 		}
 	}
 
@@ -163,13 +206,13 @@ public class TagCommandTest extends RepositoryTestCase {
 		try (Git git = new Git(db)) {
 			git.commit().setMessage("initial commit").call();
 			Ref tagRef = git.tag().setName("tag").call();
-			assertEquals(1, db.getTags().size());
+			assertEquals(1, getTags().size());
 
 			List<String> deleted = git.tagDelete()
 					.setTags(Repository.shortenRefName(tagRef.getName())).call();
 			assertEquals(1, deleted.size());
 			assertEquals(tagRef.getName(), deleted.get(0));
-			assertEquals(0, db.getTags().size());
+			assertEquals(0, getTags().size());
 		}
 	}
 

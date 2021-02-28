@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lfs.lib;
@@ -49,14 +16,13 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 import org.eclipse.jgit.lfs.errors.InvalidLongObjectIdException;
-import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.util.NB;
 import org.eclipse.jgit.util.RawParseUtils;
 
 /**
  * A SHA-256 abstraction.
  *
- * Ported to SHA-256 from {@link ObjectId}
+ * Ported to SHA-256 from {@link org.eclipse.jgit.lib.ObjectId}
  *
  * @since 4.3
  */
@@ -91,7 +57,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            the string to test.
 	 * @return true if the string can converted into an LongObjectId.
 	 */
-	public static final boolean isId(final String id) {
+	public static final boolean isId(String id) {
 		if (id.length() != Constants.LONG_OBJECT_ID_STRING_LENGTH)
 			return false;
 		try {
@@ -111,7 +77,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            the id to convert. May be null.
 	 * @return the hex string conversion of this id's content.
 	 */
-	public static final String toString(final LongObjectId i) {
+	public static final String toString(LongObjectId i) {
 		return i != null ? i.name() : ZEROID_STR;
 	}
 
@@ -174,7 +140,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            available within this byte array.
 	 * @return the converted object id.
 	 */
-	public static final LongObjectId fromRaw(final byte[] bs) {
+	public static final LongObjectId fromRaw(byte[] bs) {
 		return fromRaw(bs, 0);
 	}
 
@@ -188,7 +154,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            position to read the first byte of data from.
 	 * @return the converted object id.
 	 */
-	public static final LongObjectId fromRaw(final byte[] bs, final int p) {
+	public static final LongObjectId fromRaw(byte[] bs, int p) {
 		final long a = NB.decodeInt64(bs, p);
 		final long b = NB.decodeInt64(bs, p + 8);
 		final long c = NB.decodeInt64(bs, p + 16);
@@ -204,7 +170,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            available within this long array.
 	 * @return the converted object id.
 	 */
-	public static final LongObjectId fromRaw(final long[] is) {
+	public static final LongObjectId fromRaw(long[] is) {
 		return fromRaw(is, 0);
 	}
 
@@ -218,7 +184,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            position to read the first long of data from.
 	 * @return the converted object id.
 	 */
-	public static final LongObjectId fromRaw(final long[] is, final int p) {
+	public static final LongObjectId fromRaw(long[] is, int p) {
 		return new LongObjectId(is[p], is[p + 1], is[p + 2], is[p + 3]);
 	}
 
@@ -232,7 +198,7 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            position to read the first character from.
 	 * @return the converted object id.
 	 */
-	public static final LongObjectId fromString(final byte[] buf, final int offset) {
+	public static final LongObjectId fromString(byte[] buf, int offset) {
 		return fromHexString(buf, offset);
 	}
 
@@ -243,23 +209,25 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 *            the string to read from. Must be 64 characters long.
 	 * @return the converted object id.
 	 */
-	public static LongObjectId fromString(final String str) {
+	public static LongObjectId fromString(String str) {
 		if (str.length() != Constants.LONG_OBJECT_ID_STRING_LENGTH)
 			throw new InvalidLongObjectIdException(str);
 		return fromHexString(org.eclipse.jgit.lib.Constants.encodeASCII(str),
 				0);
 	}
 
-	private static final LongObjectId fromHexString(final byte[] bs, int p) {
+	private static final LongObjectId fromHexString(byte[] bs, int p) {
 		try {
 			final long a = RawParseUtils.parseHexInt64(bs, p);
 			final long b = RawParseUtils.parseHexInt64(bs, p + 16);
 			final long c = RawParseUtils.parseHexInt64(bs, p + 32);
 			final long d = RawParseUtils.parseHexInt64(bs, p + 48);
 			return new LongObjectId(a, b, c, d);
-		} catch (ArrayIndexOutOfBoundsException e1) {
-			throw new InvalidLongObjectIdException(bs, p,
-					Constants.LONG_OBJECT_ID_STRING_LENGTH);
+		} catch (ArrayIndexOutOfBoundsException e) {
+			InvalidLongObjectIdException e1 = new InvalidLongObjectIdException(
+					bs, p, Constants.LONG_OBJECT_ID_STRING_LENGTH);
+			e1.initCause(e);
+			throw e1;
 		}
 	}
 
@@ -281,13 +249,14 @@ public class LongObjectId extends AnyLongObjectId implements Serializable {
 	 * @param src
 	 *            another already parsed LongObjectId to copy the value out of.
 	 */
-	protected LongObjectId(final AnyLongObjectId src) {
+	protected LongObjectId(AnyLongObjectId src) {
 		w1 = src.w1;
 		w2 = src.w2;
 		w3 = src.w3;
 		w4 = src.w4;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public LongObjectId toObjectId() {
 		return this;

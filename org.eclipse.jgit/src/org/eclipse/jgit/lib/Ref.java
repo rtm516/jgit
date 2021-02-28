@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2006-2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2006-2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lib;
@@ -47,7 +14,8 @@ import org.eclipse.jgit.annotations.NonNull;
 import org.eclipse.jgit.annotations.Nullable;
 
 /**
- * Pairing of a name and the {@link ObjectId} it currently has.
+ * Pairing of a name and the {@link org.eclipse.jgit.lib.ObjectId} it currently
+ * has.
  * <p>
  * A ref in Git is (more or less) a variable that holds a single object
  * identifier. The object identifier can be any valid Git object (blob, tree,
@@ -60,7 +28,7 @@ import org.eclipse.jgit.annotations.Nullable;
  */
 public interface Ref {
 	/** Location where a {@link Ref} is stored. */
-	public static enum Storage {
+	enum Storage {
 		/**
 		 * The ref does not exist yet, updating it may create it.
 		 * <p>
@@ -104,7 +72,7 @@ public interface Ref {
 
 		private final boolean packed;
 
-		private Storage(final boolean l, final boolean p) {
+		private Storage(boolean l, boolean p) {
 			loose = l;
 			packed = p;
 		}
@@ -125,24 +93,32 @@ public interface Ref {
 	}
 
 	/**
+	 * Update index value when a reference doesn't have one
+	 *
+	 * @since 5.4
+	 */
+	long UNDEFINED_UPDATE_INDEX = -1L;
+
+	/**
 	 * What this ref is called within the repository.
 	 *
 	 * @return name of this ref.
 	 */
 	@NonNull
-	public String getName();
+	String getName();
 
 	/**
 	 * Test if this reference is a symbolic reference.
 	 * <p>
-	 * A symbolic reference does not have its own {@link ObjectId} value, but
-	 * instead points to another {@code Ref} in the same database and always
-	 * uses that other reference's value as its own.
+	 * A symbolic reference does not have its own
+	 * {@link org.eclipse.jgit.lib.ObjectId} value, but instead points to
+	 * another {@code Ref} in the same database and always uses that other
+	 * reference's value as its own.
 	 *
 	 * @return true if this is a symbolic reference; false if this reference
 	 *         contains its own ObjectId.
 	 */
-	public abstract boolean isSymbolic();
+	boolean isSymbolic();
 
 	/**
 	 * Traverse target references until {@link #isSymbolic()} is false.
@@ -161,7 +137,7 @@ public interface Ref {
 	 * @return the reference that actually stores the ObjectId value.
 	 */
 	@NonNull
-	public abstract Ref getLeaf();
+	Ref getLeaf();
 
 	/**
 	 * Get the reference this reference points to, or {@code this}.
@@ -176,7 +152,7 @@ public interface Ref {
 	 * @return the target reference, or {@code this}.
 	 */
 	@NonNull
-	public abstract Ref getTarget();
+	Ref getTarget();
 
 	/**
 	 * Cached value of this ref.
@@ -186,7 +162,7 @@ public interface Ref {
 	 *         symbolic ref pointing to an unborn branch.
 	 */
 	@Nullable
-	public abstract ObjectId getObjectId();
+	ObjectId getObjectId();
 
 	/**
 	 * Cached value of <code>ref^{}</code> (the ref peeled to commit).
@@ -196,12 +172,14 @@ public interface Ref {
 	 *         does not refer to an annotated tag.
 	 */
 	@Nullable
-	public abstract ObjectId getPeeledObjectId();
+	ObjectId getPeeledObjectId();
 
 	/**
-	 * @return whether the Ref represents a peeled tag
+	 * Whether the Ref represents a peeled tag.
+	 *
+	 * @return whether the Ref represents a peeled tag.
 	 */
-	public abstract boolean isPeeled();
+	boolean isPeeled();
 
 	/**
 	 * How was this ref obtained?
@@ -212,5 +190,28 @@ public interface Ref {
 	 * @return type of ref.
 	 */
 	@NonNull
-	public abstract Storage getStorage();
+	Storage getStorage();
+
+	/**
+	 * Indicator of the relative order between updates of a specific reference
+	 * name. A number that increases when a reference is updated.
+	 * <p>
+	 * With symbolic references, the update index refers to updates of the
+	 * symbolic reference itself. For example, if HEAD points to
+	 * refs/heads/master, then the update index for exactRef("HEAD") will only
+	 * increase when HEAD changes to point to another ref, regardless of how
+	 * many times refs/heads/master is updated.
+	 * <p>
+	 * Should not be used unless the {@code RefDatabase} that instantiated the
+	 * ref supports versioning (see {@link RefDatabase#hasVersioning()})
+	 *
+	 * @return the update index (i.e. version) of this reference.
+	 * @throws UnsupportedOperationException
+	 *             if the creator of the instance (e.g. {@link RefDatabase})
+	 *             doesn't support versioning and doesn't override this method
+	 * @since 5.3
+	 */
+	default long getUpdateIndex() {
+		throw new UnsupportedOperationException();
+	}
 }

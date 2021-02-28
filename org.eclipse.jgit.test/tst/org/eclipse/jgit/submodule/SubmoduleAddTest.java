@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2011, GitHub Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2011, GitHub Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.submodule;
 
@@ -129,23 +96,66 @@ public class SubmoduleAddTest extends RepositoryTestCase {
 			command.setPath(path);
 			String uri = db.getDirectory().toURI().toString();
 			command.setURI(uri);
-			Repository repo = command.call();
-			assertNotNull(repo);
-			ObjectId subCommit = repo.resolve(Constants.HEAD);
-			repo.close();
+			ObjectId subCommit;
+			try (Repository repo = command.call()) {
+				assertNotNull(repo);
+				subCommit = repo.resolve(Constants.HEAD);
+			}
 
-			SubmoduleWalk generator = SubmoduleWalk.forIndex(db);
-			assertTrue(generator.next());
-			assertEquals(path, generator.getPath());
-			assertEquals(commit, generator.getObjectId());
-			assertEquals(uri, generator.getModulesUrl());
-			assertEquals(path, generator.getModulesPath());
-			assertEquals(uri, generator.getConfigUrl());
-			Repository subModRepo = generator.getRepository();
-			assertNotNull(subModRepo);
-			assertEquals(subCommit, commit);
-			subModRepo.close();
+			try (SubmoduleWalk generator = SubmoduleWalk.forIndex(db)) {
+				generator.loadModulesConfig();
+				assertTrue(generator.next());
+				assertEquals(path, generator.getModuleName());
+				assertEquals(path, generator.getPath());
+				assertEquals(commit, generator.getObjectId());
+				assertEquals(uri, generator.getModulesUrl());
+				assertEquals(path, generator.getModulesPath());
+				assertEquals(uri, generator.getConfigUrl());
+				try (Repository subModRepo = generator.getRepository()) {
+					assertNotNull(subModRepo);
+					assertEquals(subCommit, commit);
+				}
+			}
+			Status status = Git.wrap(db).status().call();
+			assertTrue(status.getAdded().contains(Constants.DOT_GIT_MODULES));
+			assertTrue(status.getAdded().contains(path));
+		}
+	}
 
+	@Test
+	public void addSubmoduleWithName() throws Exception {
+		try (Git git = new Git(db)) {
+			writeTrashFile("file.txt", "content");
+			git.add().addFilepattern("file.txt").call();
+			RevCommit commit = git.commit().setMessage("create file").call();
+
+			SubmoduleAddCommand command = new SubmoduleAddCommand(db);
+			String name = "testsub";
+			command.setName(name);
+			String path = "sub";
+			command.setPath(path);
+			String uri = db.getDirectory().toURI().toString();
+			command.setURI(uri);
+			ObjectId subCommit;
+			try (Repository repo = command.call()) {
+				assertNotNull(repo);
+				subCommit = repo.resolve(Constants.HEAD);
+			}
+
+			try (SubmoduleWalk generator = SubmoduleWalk.forIndex(db)) {
+				generator.loadModulesConfig();
+				assertTrue(generator.next());
+				assertEquals(name, generator.getModuleName());
+				assertEquals(path, generator.getPath());
+				assertEquals(commit, generator.getObjectId());
+				assertEquals(uri, generator.getModulesUrl());
+				assertEquals(path, generator.getModulesPath());
+				assertEquals(uri, generator.getConfigUrl());
+				try (Repository subModRepo = generator.getRepository()) {
+					assertNotNull(subModRepo);
+					assertEquals(subCommit, commit);
+				}
+			}
 			Status status = Git.wrap(db).status().call();
 			assertTrue(status.getAdded().contains(Constants.DOT_GIT_MODULES));
 			assertTrue(status.getAdded().contains(path));
@@ -161,6 +171,7 @@ public class SubmoduleAddTest extends RepositoryTestCase {
 		DirCacheEditor editor = cache.editor();
 		editor.add(new PathEdit(path) {
 
+			@Override
 			public void apply(DirCacheEntry ent) {
 				ent.setFileMode(FileMode.GITLINK);
 				ent.setObjectId(id);
@@ -182,6 +193,34 @@ public class SubmoduleAddTest extends RepositoryTestCase {
 	}
 
 	@Test
+	public void addSubmoduleWithInvalidPath() throws Exception {
+		SubmoduleAddCommand command = new SubmoduleAddCommand(db);
+		command.setPath("-invalid-path");
+		command.setName("sub");
+		command.setURI("http://example.com/repo/x.git");
+		try {
+			command.call().close();
+			fail("Exception not thrown");
+		} catch (IllegalArgumentException e) {
+			assertEquals("Invalid submodule path '-invalid-path'",
+					e.getMessage());
+		}
+	}
+
+	@Test
+	public void addSubmoduleWithInvalidUri() throws Exception {
+		SubmoduleAddCommand command = new SubmoduleAddCommand(db);
+		command.setPath("valid-path");
+		command.setURI("-upstream");
+		try {
+			command.call().close();
+			fail("Exception not thrown");
+		} catch (IllegalArgumentException e) {
+			assertEquals("Invalid submodule URL '-upstream'", e.getMessage());
+		}
+	}
+
+	@Test
 	public void addSubmoduleWithRelativeUri() throws Exception {
 		try (Git git = new Git(db)) {
 			writeTrashFile("file.txt", "content");
@@ -197,27 +236,26 @@ public class SubmoduleAddTest extends RepositoryTestCase {
 			assertNotNull(repo);
 			addRepoToClose(repo);
 
-			SubmoduleWalk generator = SubmoduleWalk.forIndex(db);
-			assertTrue(generator.next());
-			assertEquals(path, generator.getPath());
-			assertEquals(commit, generator.getObjectId());
-			assertEquals(uri, generator.getModulesUrl());
-			assertEquals(path, generator.getModulesPath());
-			String fullUri = db.getDirectory().getAbsolutePath();
-			if (File.separatorChar == '\\') {
-				fullUri = fullUri.replace('\\', '/');
-			}
-			assertEquals(fullUri, generator.getConfigUrl());
-			Repository subModRepo = generator.getRepository();
-			assertNotNull(subModRepo);
-			assertEquals(
-					fullUri,
-					subModRepo
-							.getConfig()
-							.getString(ConfigConstants.CONFIG_REMOTE_SECTION,
+			try (SubmoduleWalk generator = SubmoduleWalk.forIndex(db)) {
+				assertTrue(generator.next());
+				assertEquals(path, generator.getPath());
+				assertEquals(commit, generator.getObjectId());
+				assertEquals(uri, generator.getModulesUrl());
+				assertEquals(path, generator.getModulesPath());
+				String fullUri = db.getDirectory().getAbsolutePath();
+				if (File.separatorChar == '\\') {
+					fullUri = fullUri.replace('\\', '/');
+				}
+				assertEquals(fullUri, generator.getConfigUrl());
+				try (Repository subModRepo = generator.getRepository()) {
+					assertNotNull(subModRepo);
+					assertEquals(fullUri,
+							subModRepo.getConfig().getString(
+									ConfigConstants.CONFIG_REMOTE_SECTION,
 									Constants.DEFAULT_REMOTE_NAME,
 									ConfigConstants.CONFIG_KEY_URL));
-			subModRepo.close();
+				}
+			}
 			assertEquals(commit, repo.resolve(Constants.HEAD));
 
 			Status status = Git.wrap(db).status().call();
@@ -266,6 +304,20 @@ public class SubmoduleAddTest extends RepositoryTestCase {
 			assertEquals(url2, modulesConfig.getString(
 					ConfigConstants.CONFIG_SUBMODULE_SECTION, path2,
 					ConfigConstants.CONFIG_KEY_URL));
+		}
+	}
+
+	@Test
+	public void denySubmoduleWithDotDot() throws Exception {
+		SubmoduleAddCommand command = new SubmoduleAddCommand(db);
+		command.setName("dir/../");
+		command.setPath("sub");
+		command.setURI(db.getDirectory().toURI().toString());
+		try {
+			command.call();
+			fail();
+		} catch (IllegalArgumentException e) {
+			// Expected
 		}
 	}
 }

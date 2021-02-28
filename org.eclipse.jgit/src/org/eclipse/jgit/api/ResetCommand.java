@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2011-2013, Chris Aniszczyk <caniszczyk@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2011-2013, Chris Aniszczyk <caniszczyk@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
@@ -58,7 +25,9 @@ import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.dircache.DirCacheIterator;
 import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
@@ -121,26 +90,32 @@ public class ResetCommand extends GitCommand<Ref> {
 
 	private ResetType mode;
 
-	private Collection<String> filepaths = new LinkedList<String>();
+	private Collection<String> filepaths = new LinkedList<>();
 
 	private boolean isReflogDisabled;
 
+	private ProgressMonitor monitor = NullProgressMonitor.INSTANCE;
+
 	/**
+	 * <p>
+	 * Constructor for ResetCommand.
+	 * </p>
 	 *
 	 * @param repo
+	 *            the {@link org.eclipse.jgit.lib.Repository}
 	 */
 	public ResetCommand(Repository repo) {
 		super(repo);
 	}
 
 	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Executes the {@code Reset} command. Each instance of this class should
 	 * only be used for one invocation of the command. Don't call this method
 	 * twice on an instance.
-	 *
-	 * @return the Ref after reset
-	 * @throws GitAPIException
 	 */
+	@Override
 	public Ref call() throws GitAPIException, CheckoutConflictException {
 		checkCallable();
 
@@ -237,7 +212,7 @@ public class ResetCommand extends GitCommand<Ref> {
 		}
 	}
 
-	private RevCommit parseCommit(final ObjectId commitId) {
+	private RevCommit parseCommit(ObjectId commitId) {
 		try (RevWalk rw = new RevWalk(repo)) {
 			return rw.parseCommit(commitId);
 		} catch (IOException e) {
@@ -257,6 +232,8 @@ public class ResetCommand extends GitCommand<Ref> {
 	}
 
 	/**
+	 * Set the name of the <code>Ref</code> to reset to
+	 *
 	 * @param ref
 	 *            the ref to reset to, defaults to HEAD if not specified
 	 * @return this instance
@@ -267,6 +244,8 @@ public class ResetCommand extends GitCommand<Ref> {
 	}
 
 	/**
+	 * Set the reset mode
+	 *
 	 * @param mode
 	 *            the mode of the reset command
 	 * @return this instance
@@ -281,6 +260,8 @@ public class ResetCommand extends GitCommand<Ref> {
 	}
 
 	/**
+	 * Repository relative path of file or directory to reset
+	 *
 	 * @param path
 	 *            repository-relative path of file/directory to reset (with
 	 *            <code>/</code> as separator)
@@ -296,6 +277,8 @@ public class ResetCommand extends GitCommand<Ref> {
 	}
 
 	/**
+	 * Whether to disable reflog
+	 *
 	 * @param disable
 	 *            if {@code true} disables writing a reflog entry for this reset
 	 *            command
@@ -308,6 +291,8 @@ public class ResetCommand extends GitCommand<Ref> {
 	}
 
 	/**
+	 * Whether reflog is disabled
+	 *
 	 * @return {@code true} if writing reflog is disabled for this reset command
 	 * @since 4.5
 	 */
@@ -316,15 +301,33 @@ public class ResetCommand extends GitCommand<Ref> {
 	}
 
 	private String getRefOrHEAD() {
-		if (ref != null)
+		if (ref != null) {
 			return ref;
-		else
-			return Constants.HEAD;
+		}
+		return Constants.HEAD;
+	}
+
+	/**
+	 * The progress monitor associated with the reset operation. By default,
+	 * this is set to <code>NullProgressMonitor</code>
+	 *
+	 * @see NullProgressMonitor
+	 * @param monitor
+	 *            a {@link org.eclipse.jgit.lib.ProgressMonitor}
+	 * @return {@code this}
+	 * @since 4.11
+	 */
+	public ResetCommand setProgressMonitor(ProgressMonitor monitor) {
+		if (monitor == null) {
+			monitor = NullProgressMonitor.INSTANCE;
+		}
+		this.monitor = monitor;
+		return this;
 	}
 
 	private void resetIndexForPaths(ObjectId commitTree) {
 		DirCache dc = null;
-		try (final TreeWalk tw = new TreeWalk(repo)) {
+		try (TreeWalk tw = new TreeWalk(repo)) {
 			dc = repo.lockDirCache();
 			DirCacheBuilder builder = dc.builder();
 
@@ -386,7 +389,7 @@ public class ResetCommand extends GitCommand<Ref> {
 						DirCacheIterator.class);
 				if (dcIter != null && dcIter.idEqual(cIter)) {
 					DirCacheEntry indexEntry = dcIter.getDirCacheEntry();
-					entry.setLastModified(indexEntry.getLastModified());
+					entry.setLastModified(indexEntry.getLastModifiedInstant());
 					entry.setLength(indexEntry.getLength());
 				}
 
@@ -406,6 +409,7 @@ public class ResetCommand extends GitCommand<Ref> {
 			DirCacheCheckout checkout = new DirCacheCheckout(repo, dc,
 					commitTree);
 			checkout.setFailOnConflict(false);
+			checkout.setProgressMonitor(monitor);
 			try {
 				checkout.checkout();
 			} catch (org.eclipse.jgit.errors.CheckoutConflictException cce) {
@@ -432,6 +436,7 @@ public class ResetCommand extends GitCommand<Ref> {
 		repo.writeMergeCommitMsg(null);
 	}
 
+	/** {@inheritDoc} */
 	@SuppressWarnings("nls")
 	@Override
 	public String toString() {

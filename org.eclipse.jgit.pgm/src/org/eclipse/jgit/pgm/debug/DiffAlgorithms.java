@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2010, Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.pgm.debug;
@@ -52,7 +19,6 @@ import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
 import org.eclipse.jgit.diff.DiffAlgorithm;
@@ -84,12 +50,14 @@ import org.kohsuke.args4j.Option;
 class DiffAlgorithms extends TextBuiltin {
 
 	final Algorithm myers = new Algorithm() {
+		@Override
 		DiffAlgorithm create() {
 			return MyersDiff.INSTANCE;
 		}
 	};
 
 	final Algorithm histogram = new Algorithm() {
+		@Override
 		DiffAlgorithm create() {
 			HistogramDiff d = new HistogramDiff();
 			d.setFallbackAlgorithm(null);
@@ -98,6 +66,7 @@ class DiffAlgorithms extends TextBuiltin {
 	};
 
 	final Algorithm histogram_myers = new Algorithm() {
+		@Override
 		DiffAlgorithm create() {
 			HistogramDiff d = new HistogramDiff();
 			d.setFallbackAlgorithm(MyersDiff.INSTANCE);
@@ -111,14 +80,14 @@ class DiffAlgorithms extends TextBuiltin {
 	//
 	//
 
-	@Option(name = "--algorithm", multiValued = true, metaVar = "NAME", usage = "Enable algorithm(s)")
-	List<String> algorithms = new ArrayList<String>();
+	@Option(name = "--algorithm", metaVar = "NAME", usage = "Enable algorithm(s)")
+	List<String> algorithms = new ArrayList<>();
 
 	@Option(name = "--text-limit", metaVar = "LIMIT", usage = "Maximum size in KiB to scan per file revision")
 	int textLimit = 15 * 1024; // 15 MiB as later we do * 1024.
 
-	@Option(name = "--repository", aliases = { "-r" }, multiValued = true, metaVar = "GIT_DIR", usage = "Repository to scan")
-	List<File> gitDirs = new ArrayList<File>();
+	@Option(name = "--repository", aliases = { "-r" }, metaVar = "GIT_DIR", usage = "Repository to scan")
+	List<File> gitDirs = new ArrayList<>();
 
 	@Option(name = "--count", metaVar = "LIMIT", usage = "Number of file revisions to be compared")
 	int count = 0; // unlimited
@@ -127,11 +96,13 @@ class DiffAlgorithms extends TextBuiltin {
 
 	private ThreadMXBean mxBean;
 
+	/** {@inheritDoc} */
 	@Override
 	protected boolean requiresRepository() {
 		return false;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	protected void run() throws Exception {
 		mxBean = ManagementFactory.getThreadMXBean();
@@ -155,11 +126,8 @@ class DiffAlgorithms extends TextBuiltin {
 			else
 				rb.findGitDir(dir);
 
-			Repository repo = rb.build();
-			try {
+			try (Repository repo = rb.build()) {
 				run(repo);
-			} finally {
-				repo.close();
 			}
 		}
 	}
@@ -233,14 +201,12 @@ class DiffAlgorithms extends TextBuiltin {
 			}
 		}
 
-		Collections.sort(all, new Comparator<Test>() {
-			public int compare(Test a, Test b) {
-				int result = Long.signum(a.runningTimeNanos - b.runningTimeNanos);
-				if (result == 0) {
-					result = a.algorithm.name.compareTo(b.algorithm.name);
-				}
-				return result;
+		Collections.sort(all, (Test a, Test b) -> {
+			int result = Long.signum(a.runningTimeNanos - b.runningTimeNanos);
+			if (result == 0) {
+				result = a.algorithm.name.compareTo(b.algorithm.name);
 			}
+			return result;
 		});
 
 		File directory = repo.getDirectory();
@@ -320,7 +286,7 @@ class DiffAlgorithms extends TextBuiltin {
 	}
 
 	private List<Test> init() {
-		List<Test> all = new ArrayList<Test>();
+		List<Test> all = new ArrayList<>();
 
 		try {
 			for (Field f : DiffAlgorithms.class.getDeclaredFields()) {
@@ -335,12 +301,9 @@ class DiffAlgorithms extends TextBuiltin {
 					}
 				}
 			}
-		} catch (IllegalArgumentException e) {
-			throw die("Cannot determine names", e); //$NON-NLS-1$
-		} catch (IllegalAccessException e) {
+		} catch (IllegalArgumentException | IllegalAccessException e) {
 			throw die("Cannot determine names", e); //$NON-NLS-1$
 		}
-
 		return all;
 	}
 
@@ -354,7 +317,7 @@ class DiffAlgorithms extends TextBuiltin {
 		return false;
 	}
 
-	private static abstract class Algorithm {
+	private abstract static class Algorithm {
 		String name;
 
 		abstract DiffAlgorithm create();

@@ -1,51 +1,23 @@
 /*
  * Copyright (C) 2008, Charles O'Farrell <charleso@charleso.org>
  * Copyright (C) 2009-2010, Google Inc.
- * Copyright (C) 2008-2013, Robin Rosenberg <robin.rosenberg@dewire.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008-2013, Robin Rosenberg <robin.rosenberg@dewire.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.internal.storage.file;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.eclipse.jgit.junit.Assert.assertEquals;
+import static org.eclipse.jgit.lib.Constants.LOCK_SUFFIX;
+import static org.eclipse.jgit.lib.RefUpdate.Result.FORCED;
+import static org.eclipse.jgit.lib.RefUpdate.Result.IO_FAILURE;
+import static org.eclipse.jgit.lib.RefUpdate.Result.LOCK_FAILURE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -60,10 +32,12 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefRename;
@@ -78,7 +52,6 @@ import org.eclipse.jgit.test.resources.SampleDataRepositoryTestCase;
 import org.junit.Test;
 
 public class RefUpdateTest extends SampleDataRepositoryTestCase {
-
 	private void writeSymref(String src, String dst) throws IOException {
 		RefUpdate u = db.updateRef(src);
 		switch (u.link(dst)) {
@@ -91,13 +64,13 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 		}
 	}
 
-	private RefUpdate updateRef(final String name) throws IOException {
+	private RefUpdate updateRef(String name) throws IOException {
 		final RefUpdate ref = db.updateRef(name);
 		ref.setNewObjectId(db.resolve(Constants.HEAD));
 		return ref;
 	}
 
-	private void delete(final RefUpdate ref, final Result expected)
+	private void delete(RefUpdate ref, Result expected)
 			throws IOException {
 		delete(ref, expected, true, true);
 	}
@@ -107,11 +80,21 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 		delete(db, ref, expected, exists, removed);
 	}
 
-	private void delete(Repository repo, final RefUpdate ref, final Result expected,
-			final boolean exists, final boolean removed) throws IOException {
-		assertEquals(exists, repo.getAllRefs().containsKey(ref.getName()));
+	private void delete(Repository repo, final RefUpdate ref,
+			final Result expected, final boolean exists, final boolean removed)
+			throws IOException {
+		assertEquals(exists, getRef(repo, ref.getName()).isPresent());
 		assertEquals(expected, ref.delete());
-		assertEquals(!removed, repo.getAllRefs().containsKey(ref.getName()));
+		assertEquals(!removed, getRef(repo, ref.getName()).isPresent());
+	}
+
+	private Optional<Ref> getRef(Repository repo, String name)
+			throws IOException {
+		return getRef(repo.getRefDatabase().getRefs(), name);
+	}
+
+	private Optional<Ref> getRef(List<Ref> refs, String name) {
+		return refs.stream().filter(r -> r.getName().equals(name)).findAny();
 	}
 
 	@Test
@@ -122,8 +105,7 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 		ru.setNewObjectId(newid);
 		Result update = ru.update();
 		assertEquals(Result.NEW, update);
-		final Ref r = db.getAllRefs().get(newRef);
-		assertNotNull(r);
+		final Ref r = getRef(db, newRef).get();
 		assertEquals(newRef, r.getName());
 		assertNotNull(r.getObjectId());
 		assertNotSame(newid, r.getObjectId());
@@ -220,6 +202,17 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 	}
 
 	@Test
+	public void testWriteReflog() throws IOException {
+		ObjectId pid = db.resolve("refs/heads/master^");
+		RefUpdate updateRef = db.updateRef("refs/heads/master");
+		updateRef.setNewObjectId(pid);
+		updateRef.setForceUpdate(true);
+		Result update = updateRef.update();
+		assertEquals(Result.FORCED, update);
+		assertEquals(1,db.getReflogReader("refs/heads/master").getReverseEntries().size());
+	}
+
+	@Test
 	public void testLooseDelete() throws IOException {
 		final String newRef = "refs/heads/abc";
 		RefUpdate ref = updateRef(newRef);
@@ -239,15 +232,74 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 
 	@Test
 	public void testDeleteHeadInBareRepo() throws IOException {
-		try (Repository bareRepo = createBareRepository()) {
-			RefUpdate ref = bareRepo.updateRef(Constants.HEAD);
-			ref.setNewObjectId(ObjectId.fromString("0123456789012345678901234567890123456789"));
-			// Create the HEAD ref so we can delete it.
-			assertEquals(Result.NEW, ref.update());
-			ref = bareRepo.updateRef(Constants.HEAD);
-			delete(bareRepo, ref, Result.NO_CHANGE, true, true);
+		Repository bareRepo = createBareRepository();
+		String master = "refs/heads/master";
+		Ref head = bareRepo.exactRef(Constants.HEAD);
+		assertNotNull(head);
+		assertTrue(head.isSymbolic());
+		assertEquals(master, head.getLeaf().getName());
+		assertNull(head.getObjectId());
+		assertNull(bareRepo.exactRef(master));
+
+		ObjectId blobId;
+		try (ObjectInserter ins = bareRepo.newObjectInserter()) {
+			blobId = ins.insert(Constants.OBJ_BLOB, "contents".getBytes(UTF_8));
+			ins.flush();
 		}
+
+		// Create master via HEAD, so we delete it.
+		RefUpdate ref = bareRepo.updateRef(Constants.HEAD);
+		ref.setNewObjectId(blobId);
+		assertEquals(Result.NEW, ref.update());
+
+		head = bareRepo.exactRef(Constants.HEAD);
+		assertTrue(head.isSymbolic());
+		assertEquals(master, head.getLeaf().getName());
+		assertEquals(blobId, head.getLeaf().getObjectId());
+		assertEquals(blobId, bareRepo.exactRef(master).getObjectId());
+
+		// Unlike in a non-bare repo, deleting the HEAD is allowed, and leaves HEAD
+		// back in a dangling state.
+		ref = bareRepo.updateRef(Constants.HEAD);
+		ref.setExpectedOldObjectId(blobId);
+		ref.setForceUpdate(true);
+		delete(bareRepo, ref, Result.FORCED, true, true);
+
+		head = bareRepo.exactRef(Constants.HEAD);
+		assertNotNull(head);
+		assertTrue(head.isSymbolic());
+		assertEquals(master, head.getLeaf().getName());
+		assertNull(head.getObjectId());
+		assertNull(bareRepo.exactRef(master));
 	}
+
+	@Test
+	public void testDeleteSymref() throws IOException {
+		RefUpdate dst = updateRef("refs/heads/abc");
+		assertEquals(Result.NEW, dst.update());
+		ObjectId id = dst.getNewObjectId();
+
+		RefUpdate u = db.updateRef("refs/symref");
+		assertEquals(Result.NEW, u.link(dst.getName()));
+
+		Ref ref = db.exactRef(u.getName());
+		assertNotNull(ref);
+		assertTrue(ref.isSymbolic());
+		assertEquals(dst.getName(), ref.getLeaf().getName());
+		assertEquals(id, ref.getLeaf().getObjectId());
+
+		u = db.updateRef(u.getName());
+		u.setDetachingSymbolicRef();
+		u.setForceUpdate(true);
+		assertEquals(Result.FORCED, u.delete());
+
+		assertNull(db.exactRef(u.getName()));
+		ref = db.exactRef(dst.getName());
+		assertNotNull(ref);
+		assertFalse(ref.isSymbolic());
+		assertEquals(id, ref.getObjectId());
+	}
+
 	/**
 	 * Delete a loose ref and make sure the directory in refs is deleted too,
 	 * and the reflog dir too
@@ -307,6 +359,8 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 		refUpdate.setNewObjectId(ObjectId.zeroId());
 		Result updateResult = refUpdate.update();
 		assertEquals(Result.FORCED, updateResult);
+
+		assertEquals(ObjectId.zeroId(), db.exactRef("HEAD").getObjectId());
 		Result deleteHeadResult = db.updateRef(Constants.HEAD).delete();
 		assertEquals(Result.NO_CHANGE, deleteHeadResult);
 
@@ -316,10 +370,10 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 
 	@Test
 	public void testRefKeySameAsName() {
+		@SuppressWarnings("deprecation")
 		Map<String, Ref> allRefs = db.getAllRefs();
 		for (Entry<String, Ref> e : allRefs.entrySet()) {
 			assertEquals(e.getKey(), e.getValue().getName());
-
 		}
 	}
 
@@ -458,8 +512,8 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 	 */
 	@Test
 	public void testRefsCacheAfterUpdate() throws Exception {
-		// Do not use the defalt repo for this case.
-		Map<String, Ref> allRefs = db.getAllRefs();
+		// Do not use the default repo for this case.
+		List<Ref> allRefs = db.getRefDatabase().getRefs();
 		ObjectId oldValue = db.resolve("HEAD");
 		ObjectId newValue = db.resolve("HEAD^");
 		// first make HEAD refer to loose ref
@@ -475,9 +529,9 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 		update = updateRef.update();
 		assertEquals(Result.FAST_FORWARD, update);
 
-		allRefs = db.getAllRefs();
-		Ref master = allRefs.get("refs/heads/master");
-		Ref head = allRefs.get("HEAD");
+		allRefs = db.getRefDatabase().getRefs();
+		Ref master = getRef(allRefs, "refs/heads/master").get();
+		Ref head = getRef(allRefs, "HEAD").get();
 		assertEquals("refs/heads/master", master.getName());
 		assertEquals("HEAD", head.getName());
 		assertTrue("is symbolic reference", head.isSymbolic());
@@ -495,8 +549,8 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 	 */
 	@Test
 	public void testRefsCacheAfterUpdateLooseOnly() throws Exception {
-		// Do not use the defalt repo for this case.
-		Map<String, Ref> allRefs = db.getAllRefs();
+		// Do not use the default repo for this case.
+		List<Ref> allRefs = db.getRefDatabase().getRefs();
 		ObjectId oldValue = db.resolve("HEAD");
 		writeSymref(Constants.HEAD, "refs/heads/newref");
 		RefUpdate updateRef = db.updateRef(Constants.HEAD);
@@ -505,9 +559,9 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 		Result update = updateRef.update();
 		assertEquals(Result.NEW, update);
 
-		allRefs = db.getAllRefs();
-		Ref head = allRefs.get("HEAD");
-		Ref newref = allRefs.get("refs/heads/newref");
+		allRefs = db.getRefDatabase().getRefs();
+		Ref head = getRef(allRefs, "HEAD").get();
+		Ref newref = getRef(allRefs, "refs/heads/newref").get();
 		assertEquals("refs/heads/newref", newref.getName());
 		assertEquals("HEAD", head.getName());
 		assertTrue("is symbolic reference", head.isSymbolic());
@@ -758,11 +812,11 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 			// Check that the involved refs are the same despite the failure
 			assertExists(false, toName);
 			if (!toLock.equals(toName))
-				assertExists(false, toName + ".lock");
-			assertExists(true, toLock + ".lock");
+				assertExists(false, toName + LOCK_SUFFIX);
+			assertExists(true, toLock + LOCK_SUFFIX);
 			if (!toLock.equals(fromName))
-				assertExists(false, "logs/" + fromName + ".lock");
-			assertExists(false, "logs/" + toName + ".lock");
+				assertExists(false, "logs/" + fromName + LOCK_SUFFIX);
+			assertExists(false, "logs/" + toName + LOCK_SUFFIX);
 			assertEquals(oldHeadId, db.resolve(Constants.HEAD));
 			assertEquals(oldfromId, db.resolve(fromName));
 			assertNull(db.resolve(toName));
@@ -828,6 +882,45 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 			throws IOException {
 		tryRenameWhenLocked("refs/heads/new/name", "refs/heads/b",
 				"refs/heads/new/name", "refs/heads/a");
+	}
+
+	@Test
+	public void testUpdateChecksOldValue() throws Exception {
+		ObjectId cur = db.resolve("master");
+		ObjectId prev = db.resolve("master^");
+		RefUpdate u1 = db.updateRef("refs/heads/master");
+		RefUpdate u2 = db.updateRef("refs/heads/master");
+
+		u1.setExpectedOldObjectId(cur);
+		u1.setNewObjectId(prev);
+		u1.setForceUpdate(true);
+
+		u2.setExpectedOldObjectId(cur);
+		u2.setNewObjectId(prev);
+		u2.setForceUpdate(true);
+
+		assertEquals(FORCED, u1.update());
+		assertEquals(LOCK_FAILURE, u2.update());
+	}
+
+	@Test
+	public void testRenameAtomic() throws IOException {
+		ObjectId prevId = db.resolve("refs/heads/master^");
+
+		RefRename rename = db.renameRef("refs/heads/master", "refs/heads/newmaster");
+
+		RefUpdate updateRef = db.updateRef("refs/heads/master");
+		updateRef.setNewObjectId(prevId);
+		updateRef.setForceUpdate(true);
+		assertEquals(FORCED, updateRef.update());
+		assertEquals(RefUpdate.Result.LOCK_FAILURE, rename.rename());
+	}
+
+	@Test
+	public void testRenameSymref() throws IOException {
+		db.resolve("HEAD");
+		RefRename r = db.renameRef("HEAD", "KOPF");
+		assertEquals(IO_FAILURE, r.rename());
 	}
 
 	@Test
@@ -898,12 +991,66 @@ public class RefUpdateTest extends SampleDataRepositoryTestCase {
 				"HEAD").getReverseEntries().get(0).getComment());
 	}
 
+	@Test
+	public void testCreateMissingObject() throws IOException {
+		String name = "refs/heads/abc";
+		ObjectId bad =
+				ObjectId.fromString("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+		RefUpdate ru = db.updateRef(name);
+		ru.setNewObjectId(bad);
+		Result update = ru.update();
+		assertEquals(Result.REJECTED_MISSING_OBJECT, update);
+
+		Ref ref = db.exactRef(name);
+		assertNull(ref);
+	}
+
+	@Test
+	public void testUpdateMissingObject() throws IOException {
+		String name = "refs/heads/abc";
+		RefUpdate ru = updateRef(name);
+		Result update = ru.update();
+		assertEquals(Result.NEW, update);
+		ObjectId oldId = ru.getNewObjectId();
+
+		ObjectId bad =
+				ObjectId.fromString("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+		ru = db.updateRef(name);
+		ru.setNewObjectId(bad);
+		update = ru.update();
+		assertEquals(Result.REJECTED_MISSING_OBJECT, update);
+
+		Ref ref = db.exactRef(name);
+		assertNotNull(ref);
+		assertEquals(oldId, ref.getObjectId());
+	}
+
+	@Test
+	public void testForceUpdateMissingObject() throws IOException {
+		String name = "refs/heads/abc";
+		RefUpdate ru = updateRef(name);
+		Result update = ru.update();
+		assertEquals(Result.NEW, update);
+		ObjectId oldId = ru.getNewObjectId();
+
+		ObjectId bad =
+				ObjectId.fromString("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+		ru = db.updateRef(name);
+		ru.setNewObjectId(bad);
+		update = ru.forceUpdate();
+		assertEquals(Result.REJECTED_MISSING_OBJECT, update);
+
+		Ref ref = db.exactRef(name);
+		assertNotNull(ref);
+		assertEquals(oldId, ref.getObjectId());
+	}
+
 	private static void writeReflog(Repository db, ObjectId newId, String msg,
 			String refName) throws IOException {
 		RefDirectory refs = (RefDirectory) db.getRefDatabase();
 		RefDirectoryUpdate update = refs.newUpdate(refName, true);
 		update.setNewObjectId(newId);
-		refs.log(update, msg, true);
+		refs.log(false, update, msg, true);
 	}
 
 	private static class SubclassedId extends ObjectId {

@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2010, 2014 Chris Aniszczyk <caniszczyk@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, 2014 Chris Aniszczyk <caniszczyk@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
@@ -66,8 +33,10 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RefLeaseSpec;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
+import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.transport.TrackingRefUpdate;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.util.FS;
@@ -81,6 +50,11 @@ public class PushCommandTest extends RepositoryTestCase {
 
 		// create other repository
 		Repository db2 = createWorkRepository();
+		final StoredConfig config2 = db2.getConfig();
+
+		// this tests that this config can be parsed properly
+		config2.setString("fsck", "", "missingEmail", "ignore");
+		config2.save();
 
 		// setup the first repository
 		final StoredConfig config = db.getConfig();
@@ -141,11 +115,11 @@ public class PushCommandTest extends RepositoryTestCase {
 			git1.push().setRemote("test").setRefSpecs(spec).call();
 			assertEquals("1:test, 2:" + uri + ", 3:\n" + "refs/heads/master "
 					+ commit.getName() + " refs/heads/x "
-					+ ObjectId.zeroId().name(), read(hookOutput));
+					+ ObjectId.zeroId().name() + "\n", read(hookOutput));
 		}
 	}
 
-	private File writeHookFile(final String name, final String data)
+	private File writeHookFile(String name, String data)
 			throws IOException {
 		File path = new File(db.getWorkTree() + "/.git/hooks/", name);
 		JGitTestUtil.write(path, data);
@@ -238,7 +212,7 @@ public class PushCommandTest extends RepositoryTestCase {
 				git.add().addFilepattern("f" + i).call();
 				commit = git.commit().setMessage("adding f" + i).call();
 				git.push().setRemote("test").call();
-				git2.getRepository().getAllRefs();
+				git2.getRepository().getRefDatabase().getRefs();
 				assertEquals("failed to update on attempt " + i, commit.getId(),
 						git2.getRepository().resolve("refs/heads/test"));
 			}
@@ -377,6 +351,58 @@ public class PushCommandTest extends RepositoryTestCase {
 					db2.resolve(commit2.getId().getName() + "^{commit}"));
 			assertEquals(commit3.getId(),
 					db2.resolve(commit3.getId().getName() + "^{commit}"));
+		}
+	}
+
+	@Test
+	public void testPushWithLease() throws JGitInternalException, IOException,
+			GitAPIException, URISyntaxException {
+
+		// create other repository
+		Repository db2 = createWorkRepository();
+
+		// setup the first repository
+		final StoredConfig config = db.getConfig();
+		RemoteConfig remoteConfig = new RemoteConfig(config, "test");
+		URIish uri = new URIish(db2.getDirectory().toURI().toURL());
+		remoteConfig.addURI(uri);
+		remoteConfig.update(config);
+		config.save();
+
+		try (Git git1 = new Git(db)) {
+			// create one commit and push it
+			RevCommit commit = git1.commit().setMessage("initial commit").call();
+			git1.branchCreate().setName("initial").call();
+
+			RefSpec spec = new RefSpec("refs/heads/master:refs/heads/x");
+			git1.push().setRemote("test").setRefSpecs(spec)
+					.call();
+
+			assertEquals(commit.getId(),
+					db2.resolve(commit.getId().getName() + "^{commit}"));
+			//now try to force-push a new commit, with a good lease
+
+			git1.commit().setMessage("second commit").call();
+			Iterable<PushResult> results =
+					git1.push().setRemote("test").setRefSpecs(spec)
+							.setRefLeaseSpecs(new RefLeaseSpec("refs/heads/x", "initial"))
+							.call();
+			for (PushResult result : results) {
+				RemoteRefUpdate update = result.getRemoteUpdate("refs/heads/x");
+				assertEquals(update.getStatus(), RemoteRefUpdate.Status.OK);
+			}
+
+			git1.commit().setMessage("third commit").call();
+			//now try to force-push a new commit, with a bad lease
+
+			results =
+					git1.push().setRemote("test").setRefSpecs(spec)
+							.setRefLeaseSpecs(new RefLeaseSpec("refs/heads/x", "initial"))
+							.call();
+			for (PushResult result : results) {
+				RemoteRefUpdate update = result.getRemoteUpdate("refs/heads/x");
+				assertEquals(update.getStatus(), RemoteRefUpdate.Status.REJECTED_REMOTE_CHANGED);
+			}
 		}
 	}
 }

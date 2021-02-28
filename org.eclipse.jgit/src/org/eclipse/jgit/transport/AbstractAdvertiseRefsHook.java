@@ -51,19 +51,23 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 
 /**
- * Implementation of {@link AdvertiseRefsHook} that advertises the same refs for
+ * Implementation of {@link org.eclipse.jgit.transport.AdvertiseRefsHook} that advertises the same refs for
  * upload-pack and receive-pack.
  *
  * @since 2.0
  */
 public abstract class AbstractAdvertiseRefsHook implements AdvertiseRefsHook {
+	/** {@inheritDoc} */
+	@Override
 	public void advertiseRefs(UploadPack uploadPack)
 			throws ServiceMayNotContinueException {
 		uploadPack.setAdvertisedRefs(getAdvertisedRefs(
 				uploadPack.getRepository(), uploadPack.getRevWalk()));
 	}
 
-	public void advertiseRefs(BaseReceivePack receivePack)
+	/** {@inheritDoc} */
+	@Override
+	public void advertiseRefs(ReceivePack receivePack)
 			throws ServiceMayNotContinueException {
 		Map<String, Ref> refs = getAdvertisedRefs(receivePack.getRepository(),
 				receivePack.getRevWalk());
@@ -80,7 +84,7 @@ public abstract class AbstractAdvertiseRefsHook implements AdvertiseRefsHook {
 	 * @param revWalk
 	 *            open rev walk on the repository.
 	 * @return set of refs to advertise.
-	 * @throws ServiceMayNotContinueException
+	 * @throws org.eclipse.jgit.transport.ServiceMayNotContinueException
 	 *             abort; the message will be sent to the user.
 	 */
 	protected abstract Map<String, Ref> getAdvertisedRefs(
@@ -95,8 +99,8 @@ public abstract class AbstractAdvertiseRefsHook implements AdvertiseRefsHook {
 	 * @param revWalk
 	 *            open rev walk on the repository.
 	 * @return set of additional haves; see
-	 *         {@link ReceivePack#getAdvertisedObjects()}.
-	 * @throws ServiceMayNotContinueException
+	 *         {@link org.eclipse.jgit.transport.ReceivePack#getAdvertisedObjects()}.
+	 * @throws org.eclipse.jgit.transport.ServiceMayNotContinueException
 	 *             abort; the message will be sent to the user.
 	 */
 	protected Set<ObjectId> getAdvertisedHaves(

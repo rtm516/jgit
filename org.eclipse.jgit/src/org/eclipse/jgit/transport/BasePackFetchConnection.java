@@ -1,70 +1,36 @@
 /*
- * Copyright (C) 2008-2010, Google Inc.
+ * Copyright (C) 2008, 2010 Google Inc.
  * Copyright (C) 2008, Robin Rosenberg <robin.rosenberg@dewire.com>
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, 2020 Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.transport;
-
-import static org.eclipse.jgit.lib.RefDatabase.ALL;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.MessageFormat;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
-import java.util.Map;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import org.eclipse.jgit.errors.PackProtocolException;
+import org.eclipse.jgit.errors.RemoteRepositoryException;
 import org.eclipse.jgit.errors.TransportException;
 import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.internal.storage.file.PackLock;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Config;
-import org.eclipse.jgit.lib.Config.SectionParser;
-import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.MutableObjectId;
 import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ObjectId;
@@ -81,6 +47,7 @@ import org.eclipse.jgit.revwalk.filter.CommitTimeRevFilter;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.transport.GitProtocolConstants.MultiAck;
 import org.eclipse.jgit.transport.PacketLineIn.AckNackResult;
+import org.eclipse.jgit.util.StringUtils;
 import org.eclipse.jgit.util.TemporaryBuffer;
 
 /**
@@ -95,10 +62,10 @@ import org.eclipse.jgit.util.TemporaryBuffer;
  * easily wrapped up into a local process pipe, anonymous TCP socket, or a
  * command executed through an SSH tunnel.
  * <p>
- * If {@link BasePackConnection#statelessRPC} is {@code true}, this connection
- * can be tunneled over a request-response style RPC system like HTTP.  The RPC
- * call boundary is determined by this class switching from writing to the
- * OutputStream to reading from the InputStream.
+ * If {@link org.eclipse.jgit.transport.BasePackConnection#statelessRPC} is
+ * {@code true}, this connection can be tunneled over a request-response style
+ * RPC system like HTTP. The RPC call boundary is determined by this class
+ * switching from writing to the OutputStream to reading from the InputStream.
  * <p>
  * Concrete implementations should just call
  * {@link #init(java.io.InputStream, java.io.OutputStream)} and
@@ -133,13 +100,13 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 	public static final String OPTION_INCLUDE_TAG = GitProtocolConstants.OPTION_INCLUDE_TAG;
 
 	/**
-	 * Mutli-ACK support for improved negotiation.
+	 * Multi-ACK support for improved negotiation.
 	 * @since 2.0
 	 */
 	public static final String OPTION_MULTI_ACK = GitProtocolConstants.OPTION_MULTI_ACK;
 
 	/**
-	 * Mutli-ACK detailed support for improved negotiation.
+	 * Multi-ACK detailed support for improved negotiation.
 	 * @since 2.0
 	 */
 	public static final String OPTION_MULTI_ACK_DETAILED = GitProtocolConstants.OPTION_MULTI_ACK_DETAILED;
@@ -200,6 +167,13 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 	 */
 	public static final String OPTION_ALLOW_REACHABLE_SHA1_IN_WANT = GitProtocolConstants.OPTION_ALLOW_REACHABLE_SHA1_IN_WANT;
 
+	/**
+	 * The client specified a filter expression.
+	 *
+	 * @since 5.0
+	 */
+	public static final String OPTION_FILTER = GitProtocolConstants.OPTION_FILTER;
+
 	private final RevWalk walk;
 
 	/** All commits that are immediately reachable by a local ref. */
@@ -235,10 +209,22 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 
 	private PackLock packLock;
 
-	/** RPC state, if {@link BasePackConnection#statelessRPC} is true. */
+	private int maxHaves;
+
+	/**
+	 * RPC state, if {@link BasePackConnection#statelessRPC} is true or protocol
+	 * V2 is used.
+	 */
 	private TemporaryBuffer.Heap state;
 
 	private PacketLineOut pckState;
+
+	/**
+	 * Either FilterSpec.NO_FILTER for a filter that doesn't filter
+	 * anything, or a filter that indicates what and what not to send to the
+	 * server.
+	 */
+	private final FilterSpec filterSpec;
 
 	/**
 	 * Create a new connection to fetch using the native git transport.
@@ -246,21 +232,26 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 	 * @param packTransport
 	 *            the transport.
 	 */
-	public BasePackFetchConnection(final PackTransport packTransport) {
+	public BasePackFetchConnection(PackTransport packTransport) {
 		super(packTransport);
 
 		if (local != null) {
-			final FetchConfig cfg = local.getConfig().get(FetchConfig.KEY);
+			final FetchConfig cfg = getFetchConfig();
 			allowOfsDelta = cfg.allowOfsDelta;
+			maxHaves = cfg.maxHaves;
 		} else {
 			allowOfsDelta = true;
+			maxHaves = Integer.MAX_VALUE;
 		}
+
 		includeTags = transport.getTagOpt() != TagOpt.NO_TAGS;
 		thinPack = transport.isFetchThin();
+		filterSpec = transport.getFilterSpec();
 
 		if (local != null) {
 			walk = new RevWalk(local);
-			reachableCommits = new RevCommitList<RevCommit>();
+			walk.setRetainBody(false);
+			reachableCommits = new RevCommitList<>();
 			REACHABLE = walk.newFlag("REACHABLE"); //$NON-NLS-1$
 			COMMON = walk.newFlag("COMMON"); //$NON-NLS-1$
 			STATE = walk.newFlag("STATE"); //$NON-NLS-1$
@@ -278,29 +269,32 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		}
 	}
 
-	private static class FetchConfig {
-		static final SectionParser<FetchConfig> KEY = new SectionParser<FetchConfig>() {
-			public FetchConfig parse(final Config cfg) {
-				return new FetchConfig(cfg);
-			}
-		};
-
+	static class FetchConfig {
 		final boolean allowOfsDelta;
 
-		FetchConfig(final Config c) {
+		final int maxHaves;
+
+		FetchConfig(Config c) {
 			allowOfsDelta = c.getBoolean("repack", "usedeltabaseoffset", true); //$NON-NLS-1$ //$NON-NLS-2$
+			maxHaves = c.getInt("fetch", "maxhaves", Integer.MAX_VALUE); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+
+		FetchConfig(boolean allowOfsDelta, int maxHaves) {
+			this.allowOfsDelta = allowOfsDelta;
+			this.maxHaves = maxHaves;
 		}
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public final void fetch(final ProgressMonitor monitor,
 			final Collection<Ref> want, final Set<ObjectId> have)
 			throws TransportException {
 		fetch(monitor, want, have, null);
 	}
 
-	/**
-	 * @since 3.0
-	 */
+	/** {@inheritDoc} */
+	@Override
 	public final void fetch(final ProgressMonitor monitor,
 			final Collection<Ref> want, final Set<ObjectId> have,
 			OutputStream outputStream) throws TransportException {
@@ -308,22 +302,37 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		doFetch(monitor, want, have, outputStream);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public boolean didFetchIncludeTags() {
 		return false;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public boolean didFetchTestConnectivity() {
 		return false;
 	}
 
-	public void setPackLockMessage(final String message) {
+	/** {@inheritDoc} */
+	@Override
+	public void setPackLockMessage(String message) {
 		lockMessage = message;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public Collection<PackLock> getPackLocks() {
 		if (packLock != null)
 			return Collections.singleton(packLock);
 		return Collections.<PackLock> emptyList();
+	}
+
+	private void clearState() {
+		walk.dispose();
+		reachableCommits = null;
+		state = null;
+		pckState = null;
 	}
 
 	/**
@@ -331,7 +340,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 	 *
 	 * @param monitor
 	 *            progress monitor to receive status updates. If the monitor is
-	 *            the {@link NullProgressMonitor#INSTANCE}, then the no-progress
+	 *            the {@link org.eclipse.jgit.lib.NullProgressMonitor#INSTANCE}, then the no-progress
 	 *            option enabled.
 	 * @param want
 	 *            the advertised remote references the caller wants to fetch.
@@ -341,7 +350,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 	 *            destination repository's references.
 	 * @param outputStream
 	 *            ouputStream to write sideband messages to
-	 * @throws TransportException
+	 * @throws org.eclipse.jgit.errors.TransportException
 	 *             if any exception occurs.
 	 * @since 3.0
 	 */
@@ -354,33 +363,226 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 			markRefsAdvertised();
 			markReachable(have, maxTimeWanted(want));
 
+			if (TransferConfig.ProtocolVersion.V2
+					.equals(getProtocolVersion())) {
+				// Protocol V2 always is a "stateless" protocol, even over a
+				// bidirectional pipe: the server serves one "fetch" request and
+				// then forgets anything it has learned, so the next fetch
+				// request has to re-send all wants and previously determined
+				// common objects as "have"s again.
+				state = new TemporaryBuffer.Heap(Integer.MAX_VALUE);
+				pckState = new PacketLineOut(state);
+				try {
+					doFetchV2(monitor, want, outputStream);
+				} finally {
+					clearState();
+				}
+				return;
+			}
+			// Protocol V0/1
 			if (statelessRPC) {
 				state = new TemporaryBuffer.Heap(Integer.MAX_VALUE);
 				pckState = new PacketLineOut(state);
 			}
-
-			if (sendWants(want)) {
+			PacketLineOut output = statelessRPC ? pckState : pckOut;
+			if (sendWants(want, output)) {
+				output.end();
+				outNeedsEnd = false;
 				negotiate(monitor);
 
-				walk.dispose();
-				reachableCommits = null;
-				state = null;
-				pckState = null;
+				clearState();
 
 				receivePack(monitor, outputStream);
 			}
 		} catch (CancelledException ce) {
 			close();
 			return; // Caller should test (or just know) this themselves.
-		} catch (IOException err) {
-			close();
-			throw new TransportException(err.getMessage(), err);
-		} catch (RuntimeException err) {
+		} catch (IOException | RuntimeException err) {
 			close();
 			throw new TransportException(err.getMessage(), err);
 		}
 	}
 
+	private void doFetchV2(ProgressMonitor monitor, Collection<Ref> want,
+			OutputStream outputStream) throws IOException, CancelledException {
+		sideband = true;
+		negotiateBegin();
+
+		pckState.writeString("command=" + GitProtocolConstants.COMMAND_FETCH); //$NON-NLS-1$
+		// Capabilities are sent as command arguments in protocol V2
+		String agent = UserAgent.get();
+		if (agent != null && isCapableOf(GitProtocolConstants.OPTION_AGENT)) {
+			pckState.writeString(
+					GitProtocolConstants.OPTION_AGENT + '=' + agent);
+		}
+		Set<String> capabilities = new HashSet<>();
+		String advertised = getCapability(GitProtocolConstants.COMMAND_FETCH);
+		if (!StringUtils.isEmptyOrNull(advertised)) {
+			capabilities.addAll(Arrays.asList(advertised.split("\\s+"))); //$NON-NLS-1$
+		}
+		// Arguments
+		pckState.writeDelim();
+		for (String capability : getCapabilitiesV2(capabilities)) {
+			pckState.writeString(capability);
+		}
+		if (!sendWants(want, pckState)) {
+			// We already have everything we wanted.
+			return;
+		}
+		// If we send something, we always close it properly ourselves.
+		outNeedsEnd = false;
+
+		FetchStateV2 fetchState = new FetchStateV2();
+		boolean sentDone = false;
+		for (;;) {
+			// The "state" buffer contains the full fetch request with all
+			// common objects found so far.
+			state.writeTo(out, monitor);
+			sentDone = sendNextHaveBatch(fetchState, pckOut, monitor);
+			if (sentDone) {
+				break;
+			}
+			if (readAcknowledgments(fetchState, pckIn, monitor)) {
+				// We got a "ready": next should be a patch file.
+				break;
+			}
+			// Note: C git reads and requires here (and after a packfile) a
+			// "0002" packet in stateless RPC transports (https). This "response
+			// end" packet is even mentioned in the protocol V2 technical
+			// documentation. However, it is not actually part of the public
+			// protocol; it occurs only in an internal protocol wrapper in the C
+			// git implementation.
+		}
+		clearState();
+		String line = pckIn.readString();
+		// If we sent a done, we may have an error reply here.
+		if (sentDone && line.startsWith("ERR ")) { //$NON-NLS-1$
+			throw new RemoteRepositoryException(uri, line.substring(4));
+		}
+		// "shallow-info", "wanted-refs", and "packfile-uris" would have to be
+		// handled here in that order.
+		if (!GitProtocolConstants.SECTION_PACKFILE.equals(line)) {
+			throw new PackProtocolException(
+					MessageFormat.format(JGitText.get().expectedGot,
+							GitProtocolConstants.SECTION_PACKFILE, line));
+		}
+		receivePack(monitor, outputStream);
+	}
+
+	/**
+	 * Sends the next batch of "have"s and terminates the {@code output}.
+	 *
+	 * @param fetchState
+	 *            is updated with information about the number of items written,
+	 *            and whether to expect a packfile next
+	 * @param output
+	 *            to write to
+	 * @param monitor
+	 *            for progress reporting and cancellation
+	 * @return {@code true} if a "done" was written and we should thus expect a
+	 *         packfile next
+	 * @throws IOException
+	 *             on errors
+	 * @throws CancelledException
+	 *             on cancellation
+	 */
+	private boolean sendNextHaveBatch(FetchStateV2 fetchState,
+			PacketLineOut output, ProgressMonitor monitor)
+			throws IOException, CancelledException {
+		long n = 0;
+		while (n < fetchState.havesToSend) {
+			final RevCommit c = walk.next();
+			if (c == null) {
+				break;
+			}
+			output.writeString("have " + c.getId().name() + '\n'); //$NON-NLS-1$
+			n++;
+			if (n % 10 == 0 && monitor.isCancelled()) {
+				throw new CancelledException();
+			}
+		}
+		fetchState.havesTotal += n;
+		if (n == 0
+				|| (fetchState.hadAcks
+						&& fetchState.havesWithoutAck > MAX_HAVES)
+				|| fetchState.havesTotal > maxHaves) {
+			output.writeString("done\n"); //$NON-NLS-1$
+			output.end();
+			return true;
+		}
+		// Increment only after the test above. Of course we have no ACKs yet
+		// for the newly added "have"s, so it makes no sense to count them
+		// against the MAX_HAVES limit.
+		fetchState.havesWithoutAck += n;
+		output.end();
+		fetchState.incHavesToSend(statelessRPC);
+		return false;
+	}
+
+	/**
+	 * Reads and processes acknowledgments, adding ACKed objects as "have"s to
+	 * the global state {@link TemporaryBuffer}.
+	 *
+	 * @param fetchState
+	 *            to update
+	 * @param input
+	 *            to read from
+	 * @param monitor
+	 *            for progress reporting and cancellation
+	 * @return {@code true} if a "ready" was received and a packfile is expected
+	 *         next
+	 * @throws IOException
+	 *             on errors
+	 * @throws CancelledException
+	 *             on cancellation
+	 */
+	private boolean readAcknowledgments(FetchStateV2 fetchState,
+			PacketLineIn input, ProgressMonitor monitor)
+			throws IOException, CancelledException {
+		String line = input.readString();
+		if (!GitProtocolConstants.SECTION_ACKNOWLEDGMENTS.equals(line)) {
+			throw new PackProtocolException(MessageFormat.format(
+					JGitText.get().expectedGot,
+					GitProtocolConstants.SECTION_ACKNOWLEDGMENTS, line));
+		}
+		MutableObjectId returnedId = new MutableObjectId();
+		line = input.readString();
+		boolean gotReady = false;
+		long n = 0;
+		while (!PacketLineIn.isEnd(line) && !PacketLineIn.isDelimiter(line)) {
+			AckNackResult ack = PacketLineIn.parseACKv2(line, returnedId);
+			// If we got a "ready", we just skip the remaining lines after
+			// having checked them for being valid. (Normally, the "ready"
+			// should be the last line anyway.)
+			if (!gotReady) {
+				if (ack == AckNackResult.ACK_COMMON) {
+					// markCommon appends the object to the "state"
+					markCommon(walk.parseAny(returnedId), ack, true);
+					fetchState.havesWithoutAck = 0;
+					fetchState.hadAcks = true;
+				} else if (ack == AckNackResult.ACK_READY) {
+					gotReady = true;
+				}
+			}
+			n++;
+			if (n % 10 == 0 && monitor.isCancelled()) {
+				throw new CancelledException();
+			}
+			line = input.readString();
+		}
+		if (gotReady) {
+			if (!PacketLineIn.isDelimiter(line)) {
+				throw new PackProtocolException(MessageFormat
+						.format(JGitText.get().expectedGot, "0001", line)); //$NON-NLS-1$
+			}
+		} else if (!PacketLineIn.isEnd(line)) {
+			throw new PackProtocolException(MessageFormat
+					.format(JGitText.get().expectedGot, "0000", line)); //$NON-NLS-1$
+		}
+		return gotReady;
+	}
+
+	/** {@inheritDoc} */
 	@Override
 	public void close() {
 		if (walk != null)
@@ -388,9 +590,13 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		super.close();
 	}
 
-	private int maxTimeWanted(final Collection<Ref> wants) {
+	FetchConfig getFetchConfig() {
+		return local.getConfig().get(FetchConfig::new);
+	}
+
+	private int maxTimeWanted(Collection<Ref> wants) {
 		int maxTime = 0;
-		for (final Ref r : wants) {
+		for (Ref r : wants) {
 			try {
 				final RevObject obj = walk.parseAny(r.getObjectId());
 				if (obj instanceof RevCommit) {
@@ -405,10 +611,9 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		return maxTime;
 	}
 
-	private void markReachable(final Set<ObjectId> have, final int maxTime)
+	private void markReachable(Set<ObjectId> have, int maxTime)
 			throws IOException {
-		Map<String, Ref> refs = local.getRefDatabase().getRefs(ALL);
-		for (final Ref r : refs.values()) {
+		for (Ref r : local.getRefDatabase().getRefs()) {
 			ObjectId id = r.getPeeledObjectId();
 			if (id == null)
 				id = r.getObjectId();
@@ -460,10 +665,10 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		}
 	}
 
-	private boolean sendWants(final Collection<Ref> want) throws IOException {
-		final PacketLineOut p = statelessRPC ? pckState : pckOut;
+	private boolean sendWants(Collection<Ref> want, PacketLineOut p)
+			throws IOException {
 		boolean first = true;
-		for (final Ref r : want) {
+		for (Ref r : want) {
 			ObjectId objectId = r.getObjectId();
 			if (objectId == null) {
 				continue;
@@ -483,18 +688,46 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 			final StringBuilder line = new StringBuilder(46);
 			line.append("want "); //$NON-NLS-1$
 			line.append(objectId.name());
-			if (first) {
+			if (first && TransferConfig.ProtocolVersion.V0
+					.equals(getProtocolVersion())) {
 				line.append(enableCapabilities());
-				first = false;
 			}
+			first = false;
 			line.append('\n');
 			p.writeString(line.toString());
 		}
-		if (first)
+		if (first) {
 			return false;
-		p.end();
-		outNeedsEnd = false;
+		}
+		if (!filterSpec.isNoOp()) {
+			p.writeString(filterSpec.filterLine());
+		}
 		return true;
+	}
+
+	private Set<String> getCapabilitiesV2(Set<String> advertisedCapabilities)
+			throws TransportException {
+		Set<String> capabilities = new LinkedHashSet<>();
+		// Protocol V2 is implicitly capable of all these.
+		if (noProgress) {
+			capabilities.add(OPTION_NO_PROGRESS);
+		}
+		if (includeTags) {
+			capabilities.add(OPTION_INCLUDE_TAG);
+		}
+		if (allowOfsDelta) {
+			capabilities.add(OPTION_OFS_DELTA);
+		}
+		if (thinPack) {
+			capabilities.add(OPTION_THIN_PACK);
+		}
+		if (!filterSpec.isNoOp()
+				&& !advertisedCapabilities.contains(OPTION_FILTER)) {
+			throw new PackProtocolException(uri,
+					JGitText.get().filterRequiresCapability);
+		}
+		// The FilterSpec will be added later in sendWants().
+		return capabilities;
 	}
 
 	private String enableCapabilities() throws TransportException {
@@ -532,11 +765,16 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 					OPTION_MULTI_ACK_DETAILED));
 		}
 
+		if (!filterSpec.isNoOp() && !wantCapability(line, OPTION_FILTER)) {
+			throw new PackProtocolException(uri,
+					JGitText.get().filterRequiresCapability);
+		}
+
 		addUserAgentCapability(line);
 		return line.toString();
 	}
 
-	private void negotiate(final ProgressMonitor monitor) throws IOException,
+	private void negotiate(ProgressMonitor monitor) throws IOException,
 			CancelledException {
 		final MutableObjectId ackId = new MutableObjectId();
 		int resultsPending = 0;
@@ -546,16 +784,19 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		boolean receivedAck = false;
 		boolean receivedReady = false;
 
-		if (statelessRPC)
+		if (statelessRPC) {
 			state.writeTo(out, null);
+		}
 
 		negotiateBegin();
 		SEND_HAVES: for (;;) {
 			final RevCommit c = walk.next();
-			if (c == null)
+			if (c == null) {
 				break SEND_HAVES;
+			}
 
-			pckOut.writeString("have " + c.getId().name() + "\n"); //$NON-NLS-1$ //$NON-NLS-2$
+			ObjectId o = c.getId();
+			pckOut.writeString("have " + o.name() + "\n"); //$NON-NLS-1$ //$NON-NLS-2$
 			havesSent++;
 			havesSinceLastContinue++;
 
@@ -567,8 +808,9 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 				continue;
 			}
 
-			if (monitor.isCancelled())
+			if (monitor.isCancelled()) {
 				throw new CancelledException();
+			}
 
 			pckOut.end();
 			resultsPending++; // Each end will cause a result to come back.
@@ -600,8 +842,9 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 					multiAck = MultiAck.OFF;
 					resultsPending = 0;
 					receivedAck = true;
-					if (statelessRPC)
+					if (statelessRPC) {
 						state.writeTo(out, null);
+					}
 					break SEND_HAVES;
 
 				case ACK_CONTINUE:
@@ -612,25 +855,30 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 					// we need to continue to talk about other parts of
 					// our local history.
 					//
-					markCommon(walk.parseAny(ackId), anr);
+					markCommon(walk.parseAny(ackId), anr, statelessRPC);
 					receivedAck = true;
 					receivedContinue = true;
 					havesSinceLastContinue = 0;
-					if (anr == AckNackResult.ACK_READY)
+					if (anr == AckNackResult.ACK_READY) {
 						receivedReady = true;
+					}
 					break;
 				}
 
-				if (monitor.isCancelled())
+				if (monitor.isCancelled()) {
 					throw new CancelledException();
+				}
 			}
 
-			if (noDone & receivedReady)
+			if (noDone && receivedReady) {
 				break SEND_HAVES;
-			if (statelessRPC)
+			}
+			if (statelessRPC) {
 				state.writeTo(out, null);
+			}
 
-			if (receivedContinue && havesSinceLastContinue > MAX_HAVES) {
+			if ((receivedContinue && havesSinceLastContinue > MAX_HAVES)
+					|| havesSent >= maxHaves) {
 				// Our history must be really different from the remote's.
 				// We just sent a whole slew of have lines, and it did not
 				// recognize any of them. Avoid sending our entire history
@@ -642,8 +890,9 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 
 		// Tell the remote side we have run out of things to talk about.
 		//
-		if (monitor.isCancelled())
+		if (monitor.isCancelled()) {
 			throw new CancelledException();
+		}
 
 		if (!receivedReady || !noDone) {
 			// When statelessRPC is true we should always leave SEND_HAVES
@@ -688,8 +937,9 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 				break;
 			}
 
-			if (monitor.isCancelled())
+			if (monitor.isCancelled()) {
 				throw new CancelledException();
+			}
 		}
 	}
 
@@ -704,7 +954,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 			}
 
 			@Override
-			public boolean include(final RevWalk walker, final RevCommit c) {
+			public boolean include(RevWalk walker, RevCommit c) {
 				final boolean remoteKnowsIsCommon = c.has(COMMON);
 				if (c.has(ADVERTISED)) {
 					// Remote advertised this, and we have it, hence common.
@@ -725,14 +975,14 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 	}
 
 	private void markRefsAdvertised() {
-		for (final Ref r : getRefs()) {
+		for (Ref r : getRefs()) {
 			markAdvertised(r.getObjectId());
 			if (r.getPeeledObjectId() != null)
 				markAdvertised(r.getPeeledObjectId());
 		}
 	}
 
-	private void markAdvertised(final AnyObjectId id) {
+	private void markAdvertised(AnyObjectId id) {
 		try {
 			walk.parseAny(id).add(ADVERTISED);
 		} catch (IOException readError) {
@@ -740,16 +990,10 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 		}
 	}
 
-	private void markCommon(final RevObject obj, final AckNackResult anr)
+	private void markCommon(RevObject obj, AckNackResult anr, boolean useState)
 			throws IOException {
-		if (statelessRPC && anr == AckNackResult.ACK_COMMON && !obj.has(STATE)) {
-			StringBuilder s;
-
-			s = new StringBuilder(6 + Constants.OBJECT_ID_STRING_LENGTH);
-			s.append("have "); //$NON-NLS-1$
-			s.append(obj.name());
-			s.append('\n');
-			pckState.writeString(s.toString());
+		if (useState && anr == AckNackResult.ACK_COMMON && !obj.has(STATE)) {
+			pckState.writeString("have " + obj.name() + '\n'); //$NON-NLS-1$
 			obj.add(STATE);
 		}
 		obj.add(COMMON);
@@ -777,7 +1021,7 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 
 	/**
 	 * Notification event delivered just before the pack is received from the
-	 * network. This event can be used by RPC such as {@link TransportHttp} to
+	 * network. This event can be used by RPC such as {@link org.eclipse.jgit.transport.TransportHttp} to
 	 * disable its request magic and ensure the pack stream is read correctly.
 	 *
 	 * @since 2.0
@@ -788,5 +1032,32 @@ public abstract class BasePackFetchConnection extends BasePackConnection
 
 	private static class CancelledException extends Exception {
 		private static final long serialVersionUID = 1L;
+	}
+
+	private static class FetchStateV2 {
+
+		long havesToSend = 32;
+
+		long havesTotal;
+
+		// Set to true if we got at least one ACK in protocol V2.
+		boolean hadAcks;
+
+		// Counts haves without ACK. Use as cutoff for negotiation only once
+		// hadAcks == true.
+		long havesWithoutAck;
+
+		void incHavesToSend(boolean statelessRPC) {
+			if (statelessRPC) {
+				// Increase this quicker since connection setup costs accumulate
+				if (havesToSend < 16384) {
+					havesToSend *= 2;
+				} else {
+					havesToSend = havesToSend * 11 / 10;
+				}
+			} else {
+				havesToSend += 32;
+			}
+		}
 	}
 }

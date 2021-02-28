@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2010-2012, Robin Stocker <robin@nibor.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010-2012, Robin Stocker <robin@nibor.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.merge;
 
@@ -71,11 +38,11 @@ public class MergeMessageFormatter {
 		StringBuilder sb = new StringBuilder();
 		sb.append("Merge "); //$NON-NLS-1$
 
-		List<String> branches = new ArrayList<String>();
-		List<String> remoteBranches = new ArrayList<String>();
-		List<String> tags = new ArrayList<String>();
-		List<String> commits = new ArrayList<String>();
-		List<String> others = new ArrayList<String>();
+		List<String> branches = new ArrayList<>();
+		List<String> remoteBranches = new ArrayList<>();
+		List<String> tags = new ArrayList<>();
+		List<String> commits = new ArrayList<>();
+		List<String> others = new ArrayList<>();
 		for (Ref ref : refsToMerge) {
 			if (ref.getName().startsWith(Constants.R_HEADS)) {
 				branches.add("'" + Repository.shortenRefName(ref.getName()) //$NON-NLS-1$
@@ -95,7 +62,7 @@ public class MergeMessageFormatter {
 			}
 		}
 
-		List<String> listings = new ArrayList<String>();
+		List<String> listings = new ArrayList<>();
 
 		if (!branches.isEmpty())
 			listings.add(joinNames(branches, "branch", "branches")); //$NON-NLS-1$//$NON-NLS-2$
@@ -153,15 +120,16 @@ public class MergeMessageFormatter {
 	private static void addConflictsMessage(List<String> conflictingPaths,
 			StringBuilder sb) {
 		sb.append("Conflicts:\n"); //$NON-NLS-1$
-		for (String conflictingPath : conflictingPaths)
+		for (String conflictingPath : conflictingPaths) {
 			sb.append('\t').append(conflictingPath).append('\n');
+		}
 	}
 
 	private static String joinNames(List<String> names, String singular,
 			String plural) {
-		if (names.size() == 1)
+		if (names.size() == 1) {
 			return singular + " " + names.get(0); //$NON-NLS-1$
-		else
-			return plural + " " + StringUtils.join(names, ", ", " and "); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+		return plural + " " + StringUtils.join(names, ", ", " and "); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 	}
 }

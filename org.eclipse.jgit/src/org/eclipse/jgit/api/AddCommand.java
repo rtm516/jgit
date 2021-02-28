@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2010, Christian Halstrick <christian.halstrick@sap.com>
- * Copyright (C) 2010, Stefan Lay <stefan.lay@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, Stefan Lay <stefan.lay@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
@@ -50,6 +17,7 @@ import static org.eclipse.jgit.lib.FileMode.TYPE_TREE;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.LinkedList;
 
@@ -91,12 +59,14 @@ public class AddCommand extends GitCommand<DirCache> {
 	private boolean update = false;
 
 	/**
+	 * Constructor for AddCommand
 	 *
 	 * @param repo
+	 *            the {@link org.eclipse.jgit.lib.Repository}
 	 */
 	public AddCommand(Repository repo) {
 		super(repo);
-		filepatterns = new LinkedList<String>();
+		filepatterns = new LinkedList<>();
 	}
 
 	/**
@@ -119,7 +89,10 @@ public class AddCommand extends GitCommand<DirCache> {
 
 	/**
 	 * Allow clients to provide their own implementation of a FileTreeIterator
+	 *
 	 * @param f
+	 *            a {@link org.eclipse.jgit.treewalk.WorkingTreeIterator}
+	 *            object.
 	 * @return {@code this}
 	 */
 	public AddCommand setWorkingTreeIterator(WorkingTreeIterator f) {
@@ -128,12 +101,13 @@ public class AddCommand extends GitCommand<DirCache> {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Executes the {@code Add} command. Each instance of this class should only
 	 * be used for one invocation of the command. Don't call this method twice
 	 * on an instance.
-	 *
-	 * @return the DirCache after Add
 	 */
+	@Override
 	public DirCache call() throws GitAPIException, NoFilepatternException {
 
 		if (filepatterns.isEmpty())
@@ -222,7 +196,7 @@ public class AddCommand extends GitCommand<DirCache> {
 
 				if (GITLINK != mode) {
 					entry.setLength(f.getEntryLength());
-					entry.setLastModified(f.getEntryLastModified());
+					entry.setLastModified(f.getEntryLastModifiedInstant());
 					long len = f.getEntryContentLength();
 					// We read and filter the content multiple times.
 					// f.getEntryContentLength() reads and filters the input and
@@ -235,7 +209,7 @@ public class AddCommand extends GitCommand<DirCache> {
 					}
 				} else {
 					entry.setLength(0);
-					entry.setLastModified(0);
+					entry.setLastModified(Instant.ofEpochSecond(0));
 					entry.setObjectId(f.getEntryObjectId());
 				}
 				builder.add(entry);
@@ -259,17 +233,18 @@ public class AddCommand extends GitCommand<DirCache> {
 	}
 
 	/**
+	 * Set whether to only match against already tracked files
+	 *
 	 * @param update
 	 *            If set to true, the command only matches {@code filepattern}
 	 *            against already tracked files in the index rather than the
 	 *            working tree. That means that it will never stage new files,
 	 *            but that it will stage modified new contents of tracked files
 	 *            and that it will remove files from the index if the
-	 *            corresponding files in the working tree have been removed.
-	 *            In contrast to the git command line a {@code filepattern} must
-	 *            exist also if update is set to true as there is no
-	 *            concept of a working directory here.
-	 *
+	 *            corresponding files in the working tree have been removed. In
+	 *            contrast to the git command line a {@code filepattern} must
+	 *            exist also if update is set to true as there is no concept of
+	 *            a working directory here.
 	 * @return {@code this}
 	 */
 	public AddCommand setUpdate(boolean update) {
@@ -278,7 +253,9 @@ public class AddCommand extends GitCommand<DirCache> {
 	}
 
 	/**
-	 * @return is the parameter update is set
+	 * Whether to only match against already tracked files
+	 *
+	 * @return whether to only match against already tracked files
 	 */
 	public boolean isUpdate() {
 		return update;

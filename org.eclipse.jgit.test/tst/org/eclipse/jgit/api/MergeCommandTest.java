@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2010, Stefan Lay <stefan.lay@sap.com>
- * Copyright (C) 2010-2014, Christian Halstrick <christian.halstrick@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010-2014, Christian Halstrick <christian.halstrick@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
@@ -54,6 +21,7 @@ import static org.junit.Assume.assumeTrue;
 
 import java.io.File;
 import java.util.Iterator;
+import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.MergeCommand.FastForwardMode;
 import org.eclipse.jgit.api.MergeResult.MergeStatus;
@@ -1556,55 +1524,64 @@ public class MergeCommandTest extends RepositoryTestCase {
 
 	@Test
 	public void testRecursiveMergeWithConflict() throws Exception {
-		TestRepository<Repository> db_t = new TestRepository<Repository>(db);
-		BranchBuilder master = db_t.branch("master");
-		RevCommit m0 = master.commit().add("f", "1\n2\n3\n4\n5\n6\n7\n8\n9\n")
-				.message("m0").create();
-		RevCommit m1 = master.commit()
-				.add("f", "1-master\n2\n3\n4\n5\n6\n7\n8\n9\n").message("m1")
-				.create();
-		db_t.getRevWalk().parseCommit(m1);
+		try (TestRepository<Repository> db_t = new TestRepository<>(db)) {
+			BranchBuilder master = db_t.branch("master");
+			RevCommit m0 = master.commit()
+					.add("f", "1\n2\n3\n4\n5\n6\n7\n8\n9\n").message("m0")
+					.create();
+			RevCommit m1 = master.commit()
+					.add("f", "1-master\n2\n3\n4\n5\n6\n7\n8\n9\n")
+					.message("m1").create();
+			db_t.getRevWalk().parseCommit(m1);
 
-		BranchBuilder side = db_t.branch("side");
-		RevCommit s1 = side.commit().parent(m0)
-				.add("f", "1\n2\n3\n4\n5\n6\n7\n8\n9-side\n").message("s1")
-				.create();
-		RevCommit s2 = side.commit().parent(m1)
-				.add("f", "1-master\n2\n3\n4\n5\n6\n7-res(side)\n8\n9-side\n")
-				.message("s2(merge)").create();
-		master.commit().parent(s1)
-				.add("f", "1-master\n2\n3\n4\n5\n6\n7-conflict\n8\n9-side\n")
-				.message("m2(merge)").create();
+			BranchBuilder side = db_t.branch("side");
+			RevCommit s1 = side.commit().parent(m0)
+					.add("f", "1\n2\n3\n4\n5\n6\n7\n8\n9-side\n").message("s1")
+					.create();
+			RevCommit s2 = side.commit().parent(m1)
+					.add("f",
+							"1-master\n2\n3\n4\n5\n6\n7-res(side)\n8\n9-side\n")
+					.message("s2(merge)").create();
+			master.commit().parent(s1)
+					.add("f",
+							"1-master\n2\n3\n4\n5\n6\n7-conflict\n8\n9-side\n")
+					.message("m2(merge)").create();
 
-		Git git = Git.wrap(db);
-		git.checkout().setName("master").call();
+			Git git = Git.wrap(db);
+			git.checkout().setName("master").call();
 
-		MergeResult result = git.merge().setStrategy(MergeStrategy.RECURSIVE)
-				.include("side", s2).call();
-		assertEquals(MergeStatus.CONFLICTING, result.getMergeStatus());
+			MergeResult result = git.merge()
+					.setStrategy(MergeStrategy.RECURSIVE).include("side", s2)
+					.call();
+			assertEquals(MergeStatus.CONFLICTING, result.getMergeStatus());
+		}
+	}
+
+	private Ref prepareSuccessfulMerge(Git git) throws Exception {
+		writeTrashFile("a", "1\na\n3\n");
+		git.add().addFilepattern("a").call();
+		RevCommit initialCommit = git.commit().setMessage("initial").call();
+
+		createBranch(initialCommit, "refs/heads/side");
+		checkoutBranch("refs/heads/side");
+
+		writeTrashFile("b", "1\nb\n3\n");
+		git.add().addFilepattern("b").call();
+		git.commit().setMessage("side").call();
+
+		checkoutBranch("refs/heads/master");
+
+		writeTrashFile("c", "1\nc\n3\n");
+		git.add().addFilepattern("c").call();
+		git.commit().setMessage("main").call();
+
+		return db.exactRef("refs/heads/side");
 	}
 
 	@Test
 	public void testMergeWithMessageOption() throws Exception {
 		try (Git git = new Git(db)) {
-			writeTrashFile("a", "1\na\n3\n");
-			git.add().addFilepattern("a").call();
-			RevCommit initialCommit = git.commit().setMessage("initial").call();
-
-			createBranch(initialCommit, "refs/heads/side");
-			checkoutBranch("refs/heads/side");
-
-			writeTrashFile("b", "1\nb\n3\n");
-			git.add().addFilepattern("b").call();
-			git.commit().setMessage("side").call();
-
-			checkoutBranch("refs/heads/master");
-
-			writeTrashFile("c", "1\nc\n3\n");
-			git.add().addFilepattern("c").call();
-			git.commit().setMessage("main").call();
-
-			Ref sideBranch = db.exactRef("refs/heads/side");
+			Ref sideBranch = prepareSuccessfulMerge(git);
 
 			git.merge().include(sideBranch).setStrategy(MergeStrategy.RESOLVE)
 					.setMessage("user message").call();
@@ -1614,6 +1591,43 @@ public class MergeCommandTest extends RepositoryTestCase {
 			Iterator<RevCommit> it = git.log().call().iterator();
 			RevCommit newHead = it.next();
 			assertEquals("user message", newHead.getFullMessage());
+		}
+	}
+
+	@Test
+	public void testMergeWithChangeId() throws Exception {
+		try (Git git = new Git(db)) {
+			Ref sideBranch = prepareSuccessfulMerge(git);
+
+			git.merge().include(sideBranch).setStrategy(MergeStrategy.RESOLVE)
+					.setInsertChangeId(true).call();
+
+			assertNull(db.readMergeCommitMsg());
+
+			Iterator<RevCommit> it = git.log().call().iterator();
+			RevCommit newHead = it.next();
+			String commitMessage = newHead.getFullMessage();
+			assertTrue(Pattern.compile("\nChange-Id: I[0-9a-fA-F]{40}\n")
+					.matcher(commitMessage).find());
+		}
+	}
+
+	@Test
+	public void testMergeWithMessageAndChangeId() throws Exception {
+		try (Git git = new Git(db)) {
+			Ref sideBranch = prepareSuccessfulMerge(git);
+
+			git.merge().include(sideBranch).setStrategy(MergeStrategy.RESOLVE)
+					.setMessage("user message").setInsertChangeId(true).call();
+
+			assertNull(db.readMergeCommitMsg());
+
+			Iterator<RevCommit> it = git.log().call().iterator();
+			RevCommit newHead = it.next();
+			String commitMessage = newHead.getFullMessage();
+			assertTrue(commitMessage.startsWith("user message\n\n"));
+			assertTrue(Pattern.compile("\nChange-Id: I[0-9a-fA-F]{40}\n")
+					.matcher(commitMessage).find());
 		}
 	}
 
@@ -1657,7 +1671,7 @@ public class MergeCommandTest extends RepositoryTestCase {
 				.getWorkTree(), path));
 	}
 
-	private static RevCommit addAllAndCommit(final Git git) throws Exception {
+	private static RevCommit addAllAndCommit(Git git) throws Exception {
 		git.add().addFilepattern(".").call();
 		return git.commit().setMessage("message").call();
 	}

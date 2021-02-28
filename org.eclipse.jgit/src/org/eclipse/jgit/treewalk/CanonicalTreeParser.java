@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2008-2010, Google Inc.
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.treewalk;
@@ -66,7 +33,9 @@ import org.eclipse.jgit.lib.MutableObjectId;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 
-/** Parses raw Git trees from the canonical semi-text/semi-binary format. */
+/**
+ * Parses raw Git trees from the canonical semi-text/semi-binary format.
+ */
 public class CanonicalTreeParser extends AbstractTreeIterator {
 	private static final byte[] EMPTY = {};
 	private static final byte[] ATTRS = encode(DOT_GIT_ATTRIBUTES);
@@ -82,7 +51,9 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 	/** Offset one past the current entry (first byte of next entry). */
 	private int nextPtr;
 
-	/** Create a new parser. */
+	/**
+	 * Create a new parser.
+	 */
 	public CanonicalTreeParser() {
 		reset(EMPTY);
 	}
@@ -102,10 +73,10 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 	 *            messages if data corruption is found.
 	 * @throws MissingObjectException
 	 *             the object supplied is not available from the repository.
-	 * @throws IncorrectObjectTypeException
+	 * @throws org.eclipse.jgit.errors.IncorrectObjectTypeException
 	 *             the object supplied as an argument is not actually a tree and
 	 *             cannot be parsed as though it were a tree.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             a loose object or pack file could not be read.
 	 */
 	public CanonicalTreeParser(final byte[] prefix, final ObjectReader reader,
@@ -115,12 +86,14 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 		reset(reader, treeId);
 	}
 
-	private CanonicalTreeParser(final CanonicalTreeParser p) {
+	private CanonicalTreeParser(CanonicalTreeParser p) {
 		super(p);
 	}
 
 	/**
-	 * @return the parent of this tree parser
+	 * Get the parent of this tree parser.
+	 *
+	 * @return the parent of this tree parser.
 	 * @deprecated internal use only
 	 */
 	@Deprecated
@@ -134,7 +107,7 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 	 * @param treeData
 	 *            the raw tree content.
 	 */
-	public void reset(final byte[] treeData) {
+	public void reset(byte[] treeData) {
 		attributesNode = null;
 		raw = treeData;
 		prevPtr = -1;
@@ -156,10 +129,10 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 	 * @return the root level parser.
 	 * @throws MissingObjectException
 	 *             the object supplied is not available from the repository.
-	 * @throws IncorrectObjectTypeException
+	 * @throws org.eclipse.jgit.errors.IncorrectObjectTypeException
 	 *             the object supplied as an argument is not actually a tree and
 	 *             cannot be parsed as though it were a tree.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             a loose object or pack file could not be read.
 	 */
 	public CanonicalTreeParser resetRoot(final ObjectReader reader,
@@ -172,7 +145,11 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 		return p;
 	}
 
-	/** @return this iterator, or its parent, if the tree is at eof. */
+	/**
+	 * Get this iterator, or its parent, if the tree is at eof.
+	 *
+	 * @return this iterator, or its parent, if the tree is at eof.
+	 */
 	public CanonicalTreeParser next() {
 		CanonicalTreeParser p = this;
 		for (;;) {
@@ -203,17 +180,18 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 	 *            messages if data corruption is found.
 	 * @throws MissingObjectException
 	 *             the object supplied is not available from the repository.
-	 * @throws IncorrectObjectTypeException
+	 * @throws org.eclipse.jgit.errors.IncorrectObjectTypeException
 	 *             the object supplied as an argument is not actually a tree and
 	 *             cannot be parsed as though it were a tree.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             a loose object or pack file could not be read.
 	 */
-	public void reset(final ObjectReader reader, final AnyObjectId id)
+	public void reset(ObjectReader reader, AnyObjectId id)
 			throws IncorrectObjectTypeException, IOException {
 		reset(reader.open(id, OBJ_TREE).getCachedBytes());
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public CanonicalTreeParser createSubtreeIterator(final ObjectReader reader,
 			final MutableObjectId idBuffer)
@@ -238,7 +216,7 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 	 * @param id
 	 *            ObjectId of the tree to open.
 	 * @return a new parser that walks over the current subtree.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             a loose object or pack file could not be read.
 	 */
 	public final CanonicalTreeParser createSubtreeIterator0(
@@ -249,41 +227,51 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 		return p;
 	}
 
-	public CanonicalTreeParser createSubtreeIterator(final ObjectReader reader)
+	/** {@inheritDoc} */
+	@Override
+	public CanonicalTreeParser createSubtreeIterator(ObjectReader reader)
 			throws IncorrectObjectTypeException, IOException {
 		return createSubtreeIterator(reader, new MutableObjectId());
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public boolean hasId() {
 		return true;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public byte[] idBuffer() {
 		return raw;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public int idOffset() {
 		return nextPtr - OBJECT_ID_LENGTH;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void reset() {
 		if (!first())
 			reset(raw);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public boolean first() {
 		return currPtr == 0;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public boolean eof() {
 		return currPtr == raw.length;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void next(int delta) {
 		if (delta == 1) {
@@ -313,6 +301,7 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 			parseEntry();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void back(int delta) {
 		if (delta == 1 && 0 <= prevPtr) {
@@ -365,26 +354,28 @@ public class CanonicalTreeParser extends AbstractTreeIterator {
 		tmp = pathOffset;
 		for (;; tmp++) {
 			c = raw[ptr++];
-			if (c == 0)
+			if (c == 0) {
 				break;
-			try {
-				path[tmp] = c;
-			} catch (ArrayIndexOutOfBoundsException e) {
-				growPath(tmp);
-				path[tmp] = c;
 			}
+			if (tmp >= path.length) {
+				growPath(tmp);
+			}
+			path[tmp] = c;
 		}
 		pathLen = tmp;
 		nextPtr = ptr + OBJECT_ID_LENGTH;
 	}
 
 	/**
-	 * Retrieve the {@link AttributesNode} for the current entry.
+	 * Retrieve the {@link org.eclipse.jgit.attributes.AttributesNode} for the
+	 * current entry.
 	 *
 	 * @param reader
-	 *            {@link ObjectReader} used to parse the .gitattributes entry.
-	 * @return {@link AttributesNode} for the current entry.
-	 * @throws IOException
+	 *            {@link org.eclipse.jgit.lib.ObjectReader} used to parse the
+	 *            .gitattributes entry.
+	 * @return {@link org.eclipse.jgit.attributes.AttributesNode} for the
+	 *         current entry.
+	 * @throws java.io.IOException
 	 * @since 4.2
 	 */
 	public AttributesNode getEntryAttributesNode(ObjectReader reader)

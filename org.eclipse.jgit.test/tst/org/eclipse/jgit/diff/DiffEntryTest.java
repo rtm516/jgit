@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2011, 2013 Dariusz Luksza <dariusz@luksza.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2011, 2013 Dariusz Luksza <dariusz@luksza.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.diff;
 
@@ -46,9 +13,9 @@ import static org.eclipse.jgit.diff.DiffEntry.DEV_NULL;
 import static org.eclipse.jgit.util.FileUtils.delete;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -60,8 +27,11 @@ import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheEditor;
 import org.eclipse.jgit.dircache.DirCacheEditor.PathEdit;
 import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.internal.storage.file.FileRepository;
+import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.junit.RepositoryTestCase;
 import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.FileTreeIterator;
@@ -395,6 +365,7 @@ public class DiffEntryTest extends RepositoryTestCase {
 			assertTrue(walk.next());
 
 			editor.add(new PathEdit("a.txt") {
+				@Override
 				public void apply(DirCacheEntry ent) {
 					ent.setFileMode(FileMode.EXECUTABLE_FILE);
 					ent.setObjectId(walk.getObjectId(0));
@@ -415,5 +386,65 @@ public class DiffEntryTest extends RepositoryTestCase {
 			assertEquals(FileMode.EXECUTABLE_FILE, diff.getNewMode());
 			assertEquals(FileMode.REGULAR_FILE, diff.getOldMode());
 		}
+	}
+
+	@Test
+	public void shouldReportSubmoduleReplacedByFileMove() throws Exception {
+		// Create a submodule
+		FileRepository submoduleStandalone = createWorkRepository();
+		JGitTestUtil.writeTrashFile(submoduleStandalone, "fileInSubmodule",
+				"submodule");
+		Git submoduleStandaloneGit = Git.wrap(submoduleStandalone);
+		submoduleStandaloneGit.add().addFilepattern("fileInSubmodule").call();
+		submoduleStandaloneGit.commit().setMessage("add file to submodule")
+				.call();
+
+		Repository submodule_db = Git.wrap(db).submoduleAdd()
+				.setPath("modules/submodule")
+				.setURI(submoduleStandalone.getDirectory().toURI().toString())
+				.call();
+		File submodule_trash = submodule_db.getWorkTree();
+		addRepoToClose(submodule_db);
+		writeTrashFile("fileInRoot", "root");
+		Git rootGit = Git.wrap(db);
+		rootGit.add().addFilepattern("fileInRoot").call();
+		rootGit.commit().setMessage("add submodule and root file").call();
+		// Dummy change on fileInRoot
+		writeTrashFile("fileInRoot", "changed");
+		rootGit.add().addFilepattern("fileInRoot").call();
+		RevCommit firstCommit = rootGit.commit().setMessage("change root file")
+				.call();
+		// Remove the submodule again and move fileInRoot into that subfolder
+		rootGit.rm().setCached(true).addFilepattern("modules/submodule").call();
+		recursiveDelete(submodule_trash);
+		JGitTestUtil.deleteTrashFile(db, "fileInRoot");
+		// Move the fileInRoot file
+		writeTrashFile("modules/submodule/fileInRoot", "changed");
+		rootGit.rm().addFilepattern("fileInRoot").addFilepattern("modules/")
+				.call();
+		rootGit.add().addFilepattern("modules/").call();
+		RevCommit secondCommit = rootGit.commit()
+				.setMessage("remove submodule and move root file")
+				.call();
+		// Diff should report submodule having been deleted and file moved
+		// (deleted and added)
+		try (TreeWalk walk = new TreeWalk(db)) {
+			walk.addTree(firstCommit.getTree());
+			walk.addTree(secondCommit.getTree());
+			walk.setRecursive(true);
+			List<DiffEntry> diffs = DiffEntry.scan(walk);
+			assertEquals(3, diffs.size());
+			DiffEntry e = diffs.get(0);
+			assertEquals(DiffEntry.ChangeType.DELETE, e.getChangeType());
+			assertEquals("fileInRoot", e.getOldPath());
+			e = diffs.get(1);
+			assertEquals(DiffEntry.ChangeType.DELETE, e.getChangeType());
+			assertEquals("modules/submodule", e.getOldPath());
+			assertEquals(FileMode.GITLINK, e.getOldMode());
+			e = diffs.get(2);
+			assertEquals(DiffEntry.ChangeType.ADD, e.getChangeType());
+			assertEquals("modules/submodule/fileInRoot", e.getNewPath());
+		}
+
 	}
 }

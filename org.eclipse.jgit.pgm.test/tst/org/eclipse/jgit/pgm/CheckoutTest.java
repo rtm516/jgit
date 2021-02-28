@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2012, IBM Corporation
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2012, IBM Corporation and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.pgm;
 
@@ -58,6 +25,7 @@ import java.util.List;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.CheckoutConflictException;
 import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.junit.LocalDiskRepositoryTestCase;
 import org.eclipse.jgit.lib.CLIRepositoryTestCase;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.Ref;
@@ -71,6 +39,23 @@ import org.junit.Assume;
 import org.junit.Test;
 
 public class CheckoutTest extends CLIRepositoryTestCase {
+	/**
+	 * Executes specified git command (with arguments), captures exception and
+	 * returns its message as an array of lines. Throws an AssertionError if no
+	 * exception is thrown.
+	 *
+	 * @param command
+	 *            a valid git command line, e.g. "git branch -h"
+	 * @return message contained within the exception
+	 */
+	private String[] executeExpectingException(String command) {
+		try {
+			execute(command);
+			throw new AssertionError("Expected Die");
+		} catch (Exception e) {
+			return e.getMessage().split(System.lineSeparator());
+		}
+	}
 
 	@Test
 	public void testCheckoutSelf() throws Exception {
@@ -107,7 +92,7 @@ public class CheckoutTest extends CLIRepositoryTestCase {
 	public void testCheckoutNonExistingBranch() throws Exception {
 		assertStringArrayEquals(
 				"error: pathspec 'side' did not match any file(s) known to git.",
-				execute("git checkout side"));
+				executeExpectingException("git checkout side"));
 	}
 
 	@Test
@@ -131,7 +116,7 @@ public class CheckoutTest extends CLIRepositoryTestCase {
 	public void testCheckoutUnresolvedHead() throws Exception {
 		assertStringArrayEquals(
 				"error: pathspec 'HEAD' did not match any file(s) known to git.",
-				execute("git checkout HEAD"));
+				executeExpectingException("git checkout HEAD"));
 	}
 
 	@Test
@@ -159,7 +144,8 @@ public class CheckoutTest extends CLIRepositoryTestCase {
 			writeTrashFile("a", "New Hello world a");
 			git.add().addFilepattern(".").call();
 
-			String[] execute = execute("git checkout branch_1");
+			String[] execute = executeExpectingException(
+					"git checkout branch_1");
 			assertEquals(
 					"error: Your local changes to the following files would be overwritten by checkout:",
 					execute[0]);
@@ -484,7 +470,8 @@ public class CheckoutTest extends CLIRepositoryTestCase {
 	 * <li>Create branch '1'
 	 * <li>Modify file 'a'
 	 * <li>Commit
-	 * <li>Delete file 'a' & replace by folder 'a' in the working tree & index
+	 * <li>Delete file 'a' and replace by folder 'a' in the working tree and
+	 * index
 	 * <li>Checkout branch '1'
 	 * </ol>
 	 * <p>
@@ -537,7 +524,8 @@ public class CheckoutTest extends CLIRepositoryTestCase {
 	 * <li>Create branch '1'
 	 * <li>Modify file 'a'
 	 * <li>Commit
-	 * <li>Delete file 'a' & replace by folder 'a' in the working tree & index
+	 * <li>Delete file 'a' and replace by folder 'a' in the working tree and
+	 * index
 	 * <li>Checkout branch '1'
 	 * </ol>
 	 * <p>
@@ -662,6 +650,21 @@ public class CheckoutTest extends CLIRepositoryTestCase {
 			assertEquals("[]", Arrays.toString(execute("git checkout -- a")));
 			assertEquals("link_a", FileUtils.readSymLink(path.toFile()));
 			assertTrue(Files.isSymbolicLink(path));
+		}
+	}
+
+	@Test
+	public void testCheckoutForce_Bug530771() throws Exception {
+		try (Git git = new Git(db)) {
+			File f = writeTrashFile("a", "Hello world");
+			git.add().addFilepattern("a").call();
+			git.commit().setMessage("create a").call();
+			writeTrashFile("a", "Goodbye world");
+			assertEquals("[]",
+					Arrays.toString(execute("git checkout -f HEAD")));
+			assertEquals("Hello world", read(f));
+			assertEquals("[a, mode:100644, content:Hello world]",
+					indexState(db, LocalDiskRepositoryTestCase.CONTENT));
 		}
 	}
 }

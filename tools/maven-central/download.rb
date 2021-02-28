@@ -11,13 +11,17 @@ group = 'org.eclipse.jgit'
 artifacts = [group,
              group + '.ant',
              group + '.archive',
+             group + '.gpg.bc',
              group + '.http.apache',
              group + '.http.server',
              group + '.junit',
              group + '.junit.http',
+             group + '.junit.ssh',
              group + '.lfs',
              group + '.lfs.server',
              group + '.pgm',
+             group + '.ssh.apache',
+             group + '.ssh.jsch',
              group + '.ui']
 
 puts 'Deleting current files'

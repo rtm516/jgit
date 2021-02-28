@@ -8,6 +8,7 @@ org.eclipse.jgit.pgm.Clean
 org.eclipse.jgit.pgm.Clone
 org.eclipse.jgit.pgm.Commit
 org.eclipse.jgit.pgm.Config
+org.eclipse.jgit.pgm.ConvertRefStorage
 org.eclipse.jgit.pgm.Daemon
 org.eclipse.jgit.pgm.Describe
 org.eclipse.jgit.pgm.Diff
@@ -18,6 +19,7 @@ org.eclipse.jgit.pgm.Glog
 org.eclipse.jgit.pgm.IndexPack
 org.eclipse.jgit.pgm.Init
 org.eclipse.jgit.pgm.Log
+org.eclipse.jgit.pgm.LsFiles
 org.eclipse.jgit.pgm.LsRemote
 org.eclipse.jgit.pgm.LsTree
 org.eclipse.jgit.pgm.Merge
@@ -38,16 +40,18 @@ org.eclipse.jgit.pgm.Tag
 org.eclipse.jgit.pgm.UploadPack
 org.eclipse.jgit.pgm.Version
 
+org.eclipse.jgit.pgm.debug.BenchmarkReftable
 org.eclipse.jgit.pgm.debug.DiffAlgorithms
 org.eclipse.jgit.pgm.debug.LfsStore
 org.eclipse.jgit.pgm.debug.MakeCacheTree
 org.eclipse.jgit.pgm.debug.ReadDirCache
+org.eclipse.jgit.pgm.debug.ReadReftable
 org.eclipse.jgit.pgm.debug.RebuildCommitGraph
-org.eclipse.jgit.pgm.debug.RebuildRefTree
 org.eclipse.jgit.pgm.debug.ShowCacheTree
 org.eclipse.jgit.pgm.debug.ShowCommands
 org.eclipse.jgit.pgm.debug.ShowDirCache
 org.eclipse.jgit.pgm.debug.ShowPackDelta
 org.eclipse.jgit.pgm.debug.TextHashFunctions
-org.eclipse.jgit.pgm.debug.WriteDirCache
-
+org.eclipse.jgit.pgm.debug.VerifyReftable
+org.eclipse.jgit.pgm.debug.WriteReftable
+org.eclipse.jgit.pgm.debug.WriteReftable

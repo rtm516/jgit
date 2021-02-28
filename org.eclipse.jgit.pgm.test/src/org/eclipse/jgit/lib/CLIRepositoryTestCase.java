@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2012, IBM Corporation and others.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2012, IBM Corporation and others. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.lib;
 
@@ -79,7 +46,7 @@ public class CLIRepositoryTestCase extends LocalDiskRepositoryTestCase {
 	 * @throws Exception
 	 */
 	protected String[] executeUnchecked(String... cmds) throws Exception {
-		List<String> result = new ArrayList<String>(cmds.length);
+		List<String> result = new ArrayList<>(cmds.length);
 		for (String cmd : cmds) {
 			result.addAll(CLIGitCommand.executeUnchecked(cmd, db));
 		}
@@ -97,7 +64,7 @@ public class CLIRepositoryTestCase extends LocalDiskRepositoryTestCase {
 	 * @throws Exception
 	 */
 	protected String[] execute(String... cmds) throws Exception {
-		List<String> result = new ArrayList<String>(cmds.length);
+		List<String> result = new ArrayList<>(cmds.length);
 		for (String cmd : cmds) {
 			Result r = CLIGitCommand.executeRaw(cmd, db);
 			if (r.ex instanceof TerminatedByHelpException) {
@@ -122,16 +89,17 @@ public class CLIRepositoryTestCase extends LocalDiskRepositoryTestCase {
 		return JGitTestUtil.writeLink(db, link, target);
 	}
 
-	protected File writeTrashFile(final String name, final String data)
+	protected File writeTrashFile(String name, String data)
 			throws IOException {
 		return JGitTestUtil.writeTrashFile(db, name, data);
 	}
 
-	protected String read(final File file) throws IOException {
+	@Override
+	protected String read(File file) throws IOException {
 		return JGitTestUtil.read(file);
 	}
 
-	protected void deleteTrashFile(final String name) throws IOException {
+	protected void deleteTrashFile(String name) throws IOException {
 		JGitTestUtil.deleteTrashFile(db, name);
 	}
 
@@ -189,11 +157,12 @@ public class CLIRepositoryTestCase extends LocalDiskRepositoryTestCase {
 	}
 
 	protected String cmdString(String... cmds) {
-		if (cmds.length == 0)
+		switch (cmds.length) {
+		case 0:
 			return "";
-		else if (cmds.length == 1)
+		case 1:
 			return "\"" + escapeJava(cmds[0]) + "\"";
-		else {
+		default:
 			StringBuilder sb = new StringBuilder(cmdString(cmds[0]));
 			for (int i=1; i<cmds.length; i++) {
 				sb.append(", ");
@@ -210,10 +179,18 @@ public class CLIRepositoryTestCase extends LocalDiskRepositoryTestCase {
 				.replaceAll("\t", "\\\\t");
 	}
 
+	protected String shellQuote(String s) {
+		return "'" + s.replace("'", "'\\''") + "'";
+	}
+
+	protected String shellQuote(File f) {
+		return "'" + f.getPath().replace("'", "'\\''") + "'";
+	}
+
 	protected void assertStringArrayEquals(String expected, String[] actual) {
 		// if there is more than one line, ignore last one if empty
 		assertEquals(1,
-				actual.length > 1 && actual[actual.length - 1].equals("")
+				actual.length > 1 && actual[actual.length - 1].isEmpty()
 						? actual.length - 1 : actual.length);
 		assertEquals(expected, actual[0]);
 	}

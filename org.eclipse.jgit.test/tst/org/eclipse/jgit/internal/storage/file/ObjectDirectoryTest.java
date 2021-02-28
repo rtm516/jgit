@@ -42,24 +42,31 @@
 
 package org.eclipse.jgit.internal.storage.file;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
-import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.RepositoryTestCase;
 import org.eclipse.jgit.lib.ConfigConstants;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
+import org.eclipse.jgit.util.FS;
 import org.junit.Assume;
 import org.junit.Test;
 
@@ -115,12 +122,12 @@ public class ObjectDirectoryTest extends RepositoryTestCase {
 			// scanning of the packs directory
 			ObjectId id = commitFile("file.txt", "test", "master").getId();
 			gc.gc();
-			assertFalse(receivingDB.hasObject(unknownID));
+			assertFalse(receivingDB.getObjectDatabase().has(unknownID));
 			assertTrue(receivingDB.getObjectDatabase().hasPackedObject(id));
 
 			// preparations
-			File packsFolder = new File(receivingDB.getObjectsDirectory(),
-					"pack");
+			File packsFolder = receivingDB.getObjectDatabase()
+					.getPackDirectory();
 			// prepare creation of a temporary file in the pack folder. This
 			// simulates that a native git gc is happening starting to write
 			// temporary files but has not yet finished
@@ -139,7 +146,7 @@ public class ObjectDirectoryTest extends RepositoryTestCase {
 			// JGit will not rescan the packs folder later on and fails to see
 			// the pack file created during gc.
 			assertTrue(tmpFile.createNewFile());
-			assertFalse(receivingDB.hasObject(unknownID));
+			assertFalse(receivingDB.getObjectDatabase().has(unknownID));
 
 			// trigger a gc. This will create packfiles which have likely the
 			// same mtime than the packfolder
@@ -147,37 +154,66 @@ public class ObjectDirectoryTest extends RepositoryTestCase {
 
 			// To deal with racy-git situations JGit's Filesnapshot class will
 			// report a file/folder potentially dirty if
-			// cachedLastReadTime-cachedLastModificationTime < 2500ms. This
-			// causes JGit to always rescan a file after modification. But:
-			// this was true only if the difference between current system time
-			// and cachedLastModification time was less than 2500ms. If the
-			// modification is more than 2500ms ago we may have reported a
-			// file/folder to be clean although it has not been rescanned. A
-			// Bug. To show the bug we sleep for more than 2500ms
+			// cachedLastReadTime-cachedLastModificationTime < filesystem
+			// timestamp resolution. This causes JGit to always rescan a file
+			// after modification. But: this was true only if the difference
+			// between current system time and cachedLastModification time was
+			// less than 2500ms. If the modification is more than 2500ms ago we
+			// may have reported a file/folder to be clean although it has not
+			// been rescanned. A bug. To show the bug we sleep for more than
+			// 2500ms
 			Thread.sleep(2600);
 
-			File[] ret = packsFolder.listFiles(new FilenameFilter() {
-				@Override
-				public boolean accept(File dir, String name) {
-					return name.endsWith(".pack");
-				}
-			});
-			assertTrue(ret.length == 1);
-			Assume.assumeTrue(tmpFile.lastModified() == ret[0].lastModified());
+			File[] ret = packsFolder.listFiles(
+					(File dir, String name) -> name.endsWith(".pack"));
+			assertTrue(ret != null && ret.length == 1);
+			FS fs = db.getFS();
+			Assume.assumeTrue(fs.lastModifiedInstant(tmpFile)
+					.equals(fs.lastModifiedInstant(ret[0])));
 
 			// all objects are in a new packfile but we will not detect it
-			assertFalse(receivingDB.hasObject(unknownID));
-			assertTrue(receivingDB.hasObject(id2));
+			assertFalse(receivingDB.getObjectDatabase().has(unknownID));
+			assertTrue(receivingDB.getObjectDatabase().has(id2));
 		}
+	}
+
+	@Test
+	public void testShallowFile()
+			throws Exception {
+		FileRepository repository = createBareRepository();
+		ObjectDirectory dir = repository.getObjectDatabase();
+
+		String commit = "d3148f9410b071edd4a4c85d2a43d1fa2574b0d2";
+		try (PrintWriter writer = new PrintWriter(
+				new File(repository.getDirectory(), Constants.SHALLOW),
+				UTF_8.name())) {
+			writer.println(commit);
+		}
+		Set<ObjectId> shallowCommits = dir.getShallowCommits();
+		assertTrue(shallowCommits.remove(ObjectId.fromString(commit)));
+		assertTrue(shallowCommits.isEmpty());
+	}
+
+	@Test
+	public void testShallowFileCorrupt() throws Exception {
+		FileRepository repository = createBareRepository();
+		ObjectDirectory dir = repository.getObjectDatabase();
+
+		String commit = "X3148f9410b071edd4a4c85d2a43d1fa2574b0d2";
+		try (PrintWriter writer = new PrintWriter(
+				new File(repository.getDirectory(), Constants.SHALLOW),
+				UTF_8.name())) {
+			writer.println(commit);
+		}
+		assertThrows(
+				MessageFormat.format(JGitText.get().badShallowLine, commit),
+				IOException.class, () -> dir.getShallowCommits());
 	}
 
 	private Collection<Callable<ObjectId>> blobInsertersForTheSameFanOutDir(
 			final ObjectDirectory dir) {
-		Callable<ObjectId> callable = new Callable<ObjectId>() {
-			public ObjectId call() throws Exception {
-				return dir.newInserter().insert(Constants.OBJ_BLOB, new byte[0]);
-			}
-		};
+		Callable<ObjectId> callable = () -> dir.newInserter()
+				.insert(Constants.OBJ_BLOB, new byte[0]);
 		return Collections.nCopies(4, callable);
 	}
 

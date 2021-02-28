@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com>
- * Copyright (C) 2015, Sasa Zivkov <sasa.zivkov@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2015, Sasa Zivkov <sasa.zivkov@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.lfs.server.s3;
 
@@ -91,13 +58,14 @@ public class S3Repository implements LargeFileRepository {
 		this.s3Config = config;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Response.Action getDownloadAction(AnyLongObjectId oid) {
 		URL endpointUrl = getObjectUrl(oid);
-		Map<String, String> queryParams = new HashMap<String, String>();
+		Map<String, String> queryParams = new HashMap<>();
 		queryParams.put(X_AMZ_EXPIRES,
 				Integer.toString(s3Config.getExpirationSeconds()));
-		Map<String, String> headers = new HashMap<String, String>();
+		Map<String, String> headers = new HashMap<>();
 		String authorizationQueryParameters = SignerV4.createAuthorizationQuery(
 				s3Config, endpointUrl, METHOD_GET, headers, queryParams,
 				UNSIGNED_PAYLOAD);
@@ -107,11 +75,12 @@ public class S3Repository implements LargeFileRepository {
 		return a;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Response.Action getUploadAction(AnyLongObjectId oid, long size) {
 		cacheObjectMetaData(oid, size);
 		URL objectUrl = getObjectUrl(oid);
-		Map<String, String> headers = new HashMap<String, String>();
+		Map<String, String> headers = new HashMap<>();
 		headers.put(X_AMZ_CONTENT_SHA256, oid.getName());
 		headers.put(HDR_CONTENT_LENGTH, Long.toString(size));
 		headers.put(X_AMZ_STORAGE_CLASS, s3Config.getStorageClass());
@@ -126,18 +95,20 @@ public class S3Repository implements LargeFileRepository {
 		return a;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Action getVerifyAction(AnyLongObjectId id) {
 		return null; // TODO(ms) implement this
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public long getSize(AnyLongObjectId oid) throws IOException {
 		URL endpointUrl = getObjectUrl(oid);
-		Map<String, String> queryParams = new HashMap<String, String>();
+		Map<String, String> queryParams = new HashMap<>();
 		queryParams.put(X_AMZ_EXPIRES,
 				Integer.toString(s3Config.getExpirationSeconds()));
-		Map<String, String> headers = new HashMap<String, String>();
+		Map<String, String> headers = new HashMap<>();
 
 		String authorizationQueryParameters = SignerV4.createAuthorizationQuery(
 				s3Config, endpointUrl, METHOD_HEAD, headers, queryParams,
@@ -188,6 +159,8 @@ public class S3Repository implements LargeFileRepository {
 				config.getBucket());
 		assertNotEmpty(LfsServerText.get().undefinedS3Region,
 				config.getRegion());
+		assertNotEmpty(LfsServerText.get().undefinedS3Hostname,
+				config.getHostname());
 		assertNotEmpty(LfsServerText.get().undefinedS3SecretKey,
 				config.getSecretKey());
 		assertNotEmpty(LfsServerText.get().undefinedS3StorageClass,
@@ -202,8 +175,8 @@ public class S3Repository implements LargeFileRepository {
 
 	private URL getObjectUrl(AnyLongObjectId oid) {
 		try {
-			return new URL(String.format("https://s3-%s.amazonaws.com/%s/%s", //$NON-NLS-1$
-					s3Config.getRegion(), s3Config.getBucket(),
+			return new URL(String.format("https://%s/%s/%s", //$NON-NLS-1$
+					s3Config.getHostname(), s3Config.getBucket(),
 					getPath(oid)));
 		} catch (MalformedURLException e) {
 			throw new IllegalArgumentException(MessageFormat.format(

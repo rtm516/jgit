@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2010-2012, Christian Halstrick <christian.halstrick@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010-2012, Christian Halstrick <christian.halstrick@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
@@ -54,13 +21,15 @@ import java.util.List;
 
 import org.eclipse.jgit.api.errors.AbortedByHookException;
 import org.eclipse.jgit.api.errors.ConcurrentRefUpdateException;
-import org.eclipse.jgit.api.errors.EmtpyCommitException;
+import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.api.errors.NoFilepatternException;
 import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.api.errors.NoMessageException;
+import org.eclipse.jgit.api.errors.ServiceUnavailableException;
 import org.eclipse.jgit.api.errors.UnmergedPathsException;
+import org.eclipse.jgit.api.errors.UnsupportedSigningFormatException;
 import org.eclipse.jgit.api.errors.WrongRepositoryStateException;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheBuildIterator;
@@ -76,6 +45,10 @@ import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.GpgConfig;
+import org.eclipse.jgit.lib.GpgConfig.GpgFormat;
+import org.eclipse.jgit.lib.GpgObjectSigner;
+import org.eclipse.jgit.lib.GpgSigner;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.PersonIdent;
@@ -88,6 +61,7 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevObject;
 import org.eclipse.jgit.revwalk.RevTag;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.FileTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -112,7 +86,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 
 	private boolean all;
 
-	private List<String> only = new ArrayList<String>();
+	private List<String> only = new ArrayList<>();
 
 	private boolean[] onlyProcessed;
 
@@ -124,7 +98,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	 * parents this commit should have. The current HEAD will be in this list
 	 * and also all commits mentioned in .git/MERGE_HEAD
 	 */
-	private List<ObjectId> parents = new LinkedList<ObjectId>();
+	private List<ObjectId> parents = new LinkedList<>();
 
 	private String reflogComment;
 
@@ -137,41 +111,48 @@ public class CommitCommand extends GitCommand<RevCommit> {
 
 	private HashMap<String, PrintStream> hookOutRedirect = new HashMap<>(3);
 
+	private HashMap<String, PrintStream> hookErrRedirect = new HashMap<>(3);
+
 	private Boolean allowEmpty;
 
+	private Boolean signCommit;
+
+	private String signingKey;
+
+	private GpgSigner gpgSigner;
+
+	private GpgConfig gpgConfig;
+
+	private CredentialsProvider credentialsProvider;
+
 	/**
+	 * Constructor for CommitCommand
+	 *
 	 * @param repo
+	 *            the {@link org.eclipse.jgit.lib.Repository}
 	 */
 	protected CommitCommand(Repository repo) {
 		super(repo);
+		this.credentialsProvider = CredentialsProvider.getDefault();
 	}
 
 	/**
+	 * {@inheritDoc}
+	 * <p>
 	 * Executes the {@code commit} command with all the options and parameters
 	 * collected by the setter methods of this class. Each instance of this
 	 * class should only be used for one invocation of the command (means: one
 	 * call to {@link #call()})
 	 *
-	 * @return a {@link RevCommit} object representing the successful commit.
-	 * @throws NoHeadException
-	 *             when called on a git repo without a HEAD reference
-	 * @throws NoMessageException
-	 *             when called without specifying a commit message
-	 * @throws UnmergedPathsException
-	 *             when the current index contained unmerged paths (conflicts)
-	 * @throws ConcurrentRefUpdateException
-	 *             when HEAD or branch ref is updated concurrently by someone
-	 *             else
-	 * @throws WrongRepositoryStateException
-	 *             when repository is not in the right state for committing
-	 * @throws AbortedByHookException
-	 *             if there are either pre-commit or commit-msg hooks present in
-	 *             the repository and one of them rejects the commit.
+	 * @throws ServiceUnavailableException
+	 *             if signing service is not available e.g. since it isn't
+	 *             installed
 	 */
-	public RevCommit call() throws GitAPIException, NoHeadException,
-			NoMessageException, UnmergedPathsException,
-			ConcurrentRefUpdateException, WrongRepositoryStateException,
-			AbortedByHookException {
+	@Override
+	public RevCommit call() throws GitAPIException, AbortedByHookException,
+			ConcurrentRefUpdateException, NoHeadException, NoMessageException,
+			ServiceUnavailableException, UnmergedPathsException,
+			WrongRepositoryStateException {
 		checkCallable();
 		Collections.sort(only);
 
@@ -183,7 +164,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 						state.name()));
 
 			if (!noVerify) {
-				Hooks.preCommit(repo, hookOutRedirect.get(PreCommitHook.NAME))
+				Hooks.preCommit(repo, hookOutRedirect.get(PreCommitHook.NAME),
+						hookErrRedirect.get(PreCommitHook.NAME))
 						.call();
 			}
 
@@ -225,7 +207,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 			if (!noVerify) {
 				message = Hooks
 						.commitMsg(repo,
-								hookOutRedirect.get(CommitMsgHook.NAME))
+								hookOutRedirect.get(CommitMsgHook.NAME),
+								hookErrRedirect.get(CommitMsgHook.NAME))
 						.setCommitMessage(message).call();
 			}
 
@@ -248,7 +231,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 					RevCommit headCommit = rw.parseCommit(headId);
 					headCommit.getTree();
 					if (indexTreeId.equals(headCommit.getTree())) {
-						throw new EmtpyCommitException(
+						throw new EmptyCommitException(
 								JGitText.get().emptyCommit);
 					}
 				}
@@ -261,6 +244,26 @@ public class CommitCommand extends GitCommand<RevCommit> {
 
 				commit.setParentIds(parents);
 				commit.setTreeId(indexTreeId);
+
+				if (signCommit.booleanValue()) {
+					if (gpgSigner == null) {
+						throw new ServiceUnavailableException(
+								JGitText.get().signingServiceUnavailable);
+					}
+					if (gpgSigner instanceof GpgObjectSigner) {
+						((GpgObjectSigner) gpgSigner).signObject(commit,
+								signingKey, committer, credentialsProvider,
+								gpgConfig);
+					} else {
+						if (gpgConfig.getKeyFormat() != GpgFormat.OPENPGP) {
+							throw new UnsupportedSigningFormatException(JGitText
+									.get().onlyOpenPgpSupportedForSigning);
+						}
+						gpgSigner.sign(commit, signingKey, committer,
+								credentialsProvider);
+					}
+				}
+
 				ObjectId commitId = odi.insert(commit);
 				odi.flush();
 
@@ -271,7 +274,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 					ru.setRefLogMessage(reflogComment, false);
 				} else {
 					String prefix = amend ? "commit (amend): " //$NON-NLS-1$
-							: parents.size() == 0 ? "commit (initial): " //$NON-NLS-1$
+							: parents.isEmpty() ? "commit (initial): " //$NON-NLS-1$
 									: "commit: "; //$NON-NLS-1$
 					ru.setRefLogMessage(prefix + revCommit.getShortMessage(),
 							false);
@@ -300,7 +303,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 						repo.writeRevertHead(null);
 					}
 					Hooks.postCommit(repo,
-							hookOutRedirect.get(PostCommitHook.NAME)).call();
+							hookOutRedirect.get(PostCommitHook.NAME),
+							hookErrRedirect.get(PostCommitHook.NAME)).call();
 
 					return revCommit;
 				}
@@ -402,7 +406,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 						final DirCacheEntry dcEntry = new DirCacheEntry(path);
 						long entryLength = fTree.getEntryLength();
 						dcEntry.setLength(entryLength);
-						dcEntry.setLastModified(fTree.getEntryLastModified());
+						dcEntry.setLastModified(fTree.getEntryLastModifiedInstant());
 						dcEntry.setFileMode(fTree.getIndexFileMode(dcTree));
 
 						boolean objectExists = (dcTree != null
@@ -419,14 +423,11 @@ public class CommitCommand extends GitCommand<RevCommit> {
 									inserter = repo.newObjectInserter();
 								long contentLength = fTree
 										.getEntryContentLength();
-								InputStream inputStream = fTree
-										.openEntryStream();
-								try {
+								try (InputStream inputStream = fTree
+										.openEntryStream()) {
 									dcEntry.setObjectId(inserter.insert(
 											Constants.OBJ_BLOB, contentLength,
 											inputStream));
-								} finally {
-									inputStream.close();
 								}
 							}
 						}
@@ -481,7 +482,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 						JGitText.get().entryNotFoundByPath, only.get(i)));
 
 		// there must be at least one change
-		if (emptyCommit)
+		if (emptyCommit && !allowEmpty.booleanValue())
 			// Would like to throw a EmptyCommitException. But this would break the API
 			// TODO(ch): Change this in the next release
 			throw new JGitInternalException(JGitText.get().emptyCommit);
@@ -511,7 +512,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 			int position = Collections.binarySearch(only, p);
 			if (position >= 0)
 				return position;
-			int l = p.lastIndexOf("/"); //$NON-NLS-1$
+			int l = p.lastIndexOf('/');
 			if (l < 1)
 				break;
 			p = p.substring(0, l);
@@ -530,9 +531,11 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	 *
 	 * @throws NoMessageException
 	 *             if the commit message has not been specified
+	 * @throws UnsupportedSigningFormatException
+	 *             if the configured gpg.format is not supported
 	 */
 	private void processOptions(RepositoryState state, RevWalk rw)
-			throws NoMessageException {
+			throws NoMessageException, UnsupportedSigningFormatException {
 		if (committer == null)
 			committer = new PersonIdent(repo);
 		if (author == null && !amend)
@@ -585,6 +588,20 @@ public class CommitCommand extends GitCommand<RevCommit> {
 			// as long as we don't support -C option we have to have
 			// an explicit message
 			throw new NoMessageException(JGitText.get().commitMessageNotSpecified);
+
+		if (gpgConfig == null) {
+			gpgConfig = new GpgConfig(repo.getConfig());
+		}
+		if (signCommit == null) {
+			signCommit = gpgConfig.isSignCommits() ? Boolean.TRUE
+					: Boolean.FALSE;
+		}
+		if (signingKey == null) {
+			signingKey = gpgConfig.getSigningKey();
+		}
+		if (gpgSigner == null) {
+			gpgSigner = GpgSigner.getDefault();
+		}
 	}
 
 	private boolean isMergeDuringRebase(RepositoryState state) {
@@ -601,6 +618,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
+	 * Set the commit message
+	 *
 	 * @param message
 	 *            the commit message used for the {@code commit}
 	 * @return {@code this}
@@ -612,6 +631,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
+	 * Set whether to allow to create an empty commit
+	 *
 	 * @param allowEmpty
 	 *            whether it should be allowed to create a commit which has the
 	 *            same tree as it's sole predecessor (a commit which doesn't
@@ -622,8 +643,9 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	 *            <p>
 	 *            By default when creating a commit containing only specified
 	 *            paths an attempt to create an empty commit leads to a
-	 *            {@link JGitInternalException}. By setting this flag to
-	 *            <code>true</code> this exception will not be thrown.
+	 *            {@link org.eclipse.jgit.api.errors.JGitInternalException}. By
+	 *            setting this flag to <code>true</code> this exception will not
+	 *            be thrown.
 	 * @return {@code this}
 	 * @since 4.2
 	 */
@@ -633,6 +655,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
+	 * Get the commit message
+	 *
 	 * @return the commit message used for the <code>commit</code>
 	 */
 	public String getMessage() {
@@ -672,10 +696,12 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
+	 * Get the committer
+	 *
 	 * @return the committer used for the {@code commit}. If no committer was
 	 *         specified {@code null} is returned and the default
-	 *         {@link PersonIdent} of this repo is used during execution of the
-	 *         command
+	 *         {@link org.eclipse.jgit.lib.PersonIdent} of this repo is used
+	 *         during execution of the command
 	 */
 	public PersonIdent getCommitter() {
 		return committer;
@@ -714,10 +740,12 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
+	 * Get the author
+	 *
 	 * @return the author used for the {@code commit}. If no author was
 	 *         specified {@code null} is returned and the default
-	 *         {@link PersonIdent} of this repo is used during execution of the
-	 *         command
+	 *         {@link org.eclipse.jgit.lib.PersonIdent} of this repo is used
+	 *         during execution of the command
 	 */
 	public PersonIdent getAuthor() {
 		return author;
@@ -729,6 +757,8 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	 * not affected. This corresponds to the parameter -a on the command line.
 	 *
 	 * @param all
+	 *            whether to auto-stage all files that have been modified and
+	 *            deleted
 	 * @return {@code this}
 	 * @throws JGitInternalException
 	 *             in case of an illegal combination of arguments/ options
@@ -744,11 +774,12 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
-	 * Used to amend the tip of the current branch. If set to true, the previous
-	 * commit will be amended. This is equivalent to --amend on the command
-	 * line.
+	 * Used to amend the tip of the current branch. If set to {@code true}, the
+	 * previous commit will be amended. This is equivalent to --amend on the
+	 * command line.
 	 *
 	 * @param amend
+	 *            whether to ammend the tip of the current branch
 	 * @return {@code this}
 	 */
 	public CommitCommand setAmend(boolean amend) {
@@ -789,7 +820,7 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	 * will be replaced by the change id.
 	 *
 	 * @param insertChangeId
-	 *
+	 *            whether to insert a change id
 	 * @return {@code this}
 	 */
 	public CommitCommand setInsertChangeId(boolean insertChangeId) {
@@ -849,6 +880,23 @@ public class CommitCommand extends GitCommand<RevCommit> {
 	}
 
 	/**
+	 * Set the error stream for all hook scripts executed by this command
+	 * (pre-commit, commit-msg, post-commit). If not set it defaults to
+	 * {@code System.err}.
+	 *
+	 * @param hookStdErr
+	 *            the error stream for hook scripts executed by this command
+	 * @return {@code this}
+	 * @since 5.6
+	 */
+	public CommitCommand setHookErrorStream(PrintStream hookStdErr) {
+		setHookErrorStream(PreCommitHook.NAME, hookStdErr);
+		setHookErrorStream(CommitMsgHook.NAME, hookStdErr);
+		setHookErrorStream(PostCommitHook.NAME, hookStdErr);
+		return this;
+	}
+
+	/**
 	 * Set the output stream for a selected hook script executed by this command
 	 * (pre-commit, commit-msg, post-commit). If not set it defaults to
 	 * {@code System.out}.
@@ -871,5 +919,110 @@ public class CommitCommand extends GitCommand<RevCommit> {
 		}
 		hookOutRedirect.put(hookName, hookStdOut);
 		return this;
+	}
+
+	/**
+	 * Set the error stream for a selected hook script executed by this command
+	 * (pre-commit, commit-msg, post-commit). If not set it defaults to
+	 * {@code System.err}.
+	 *
+	 * @param hookName
+	 *            name of the hook to set the output stream for
+	 * @param hookStdErr
+	 *            the output stream to use for the selected hook
+	 * @return {@code this}
+	 * @since 5.6
+	 */
+	public CommitCommand setHookErrorStream(String hookName,
+			PrintStream hookStdErr) {
+		if (!(PreCommitHook.NAME.equals(hookName)
+				|| CommitMsgHook.NAME.equals(hookName)
+				|| PostCommitHook.NAME.equals(hookName))) {
+			throw new IllegalArgumentException(MessageFormat
+					.format(JGitText.get().illegalHookName, hookName));
+		}
+		hookErrRedirect.put(hookName, hookStdErr);
+		return this;
+	}
+
+	/**
+	 * Sets the signing key
+	 * <p>
+	 * Per spec of user.signingKey: this will be sent to the GPG program as is,
+	 * i.e. can be anything supported by the GPG program.
+	 * </p>
+	 * <p>
+	 * Note, if none was set or <code>null</code> is specified a default will be
+	 * obtained from the configuration.
+	 * </p>
+	 *
+	 * @param signingKey
+	 *            signing key (maybe <code>null</code>)
+	 * @return {@code this}
+	 * @since 5.3
+	 */
+	public CommitCommand setSigningKey(String signingKey) {
+		checkCallable();
+		this.signingKey = signingKey;
+		return this;
+	}
+
+	/**
+	 * Sets whether the commit should be signed.
+	 *
+	 * @param sign
+	 *            <code>true</code> to sign, <code>false</code> to not sign and
+	 *            <code>null</code> for default behavior (read from
+	 *            configuration)
+	 * @return {@code this}
+	 * @since 5.3
+	 */
+	public CommitCommand setSign(Boolean sign) {
+		checkCallable();
+		this.signCommit = sign;
+		return this;
+	}
+
+	/**
+	 * Sets the {@link GpgSigner} to use if the commit is to be signed.
+	 *
+	 * @param signer
+	 *            to use; if {@code null}, the default signer will be used
+	 * @return {@code this}
+	 * @since 5.11
+	 */
+	public CommitCommand setGpgSigner(GpgSigner signer) {
+		checkCallable();
+		this.gpgSigner = signer;
+		return this;
+	}
+
+	/**
+	 * Sets an external {@link GpgConfig} to use. Whether it will be used is at
+	 * the discretion of the {@link #setGpgSigner(GpgSigner)}.
+	 *
+	 * @param config
+	 *            to set; if {@code null}, the config will be loaded from the
+	 *            git config of the repository
+	 * @return {@code this}
+	 * @since 5.11
+	 */
+	public CommitCommand setGpgConfig(GpgConfig config) {
+		checkCallable();
+		this.gpgConfig = config;
+		return this;
+	}
+
+	/**
+	 * Sets a {@link CredentialsProvider}
+	 *
+	 * @param credentialsProvider
+	 *            the provider to use when querying for credentials (eg., during
+	 *            signing)
+	 * @since 5.3
+	 */
+	public void setCredentialsProvider(
+			CredentialsProvider credentialsProvider) {
+		this.credentialsProvider = credentialsProvider;
 	}
 }

@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2010, Chris Aniszczyk <caniszczyk@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, Chris Aniszczyk <caniszczyk@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
@@ -47,9 +14,12 @@ import java.io.OutputStream;
 import java.net.URISyntaxException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.InvalidRemoteException;
@@ -65,6 +35,7 @@ import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RefLeaseSpec;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
@@ -85,6 +56,8 @@ public class PushCommand extends
 
 	private final List<RefSpec> refSpecs;
 
+	private final Map<String, RefLeaseSpec> refLeaseSpecs;
+
 	private ProgressMonitor monitor = NullProgressMonitor.INSTANCE;
 
 	private String receivePack = RemoteConfig.DEFAULT_RECEIVE_PACK;
@@ -99,32 +72,34 @@ public class PushCommand extends
 	private List<String> pushOptions;
 
 	/**
+	 * <p>
+	 * Constructor for PushCommand.
+	 * </p>
+	 *
 	 * @param repo
+	 *            the {@link org.eclipse.jgit.lib.Repository}
 	 */
 	protected PushCommand(Repository repo) {
 		super(repo);
-		refSpecs = new ArrayList<RefSpec>(3);
+		refSpecs = new ArrayList<>(3);
+		refLeaseSpecs = new HashMap<>();
 	}
 
 	/**
-	 * Executes the {@code push} command with all the options and parameters
+	 * {@inheritDoc}
+	 * <p>
+	 * Execute the {@code push} command with all the options and parameters
 	 * collected by the setter methods of this class. Each instance of this
 	 * class should only be used for one invocation of the command (means: one
 	 * call to {@link #call()})
-	 *
-	 * @return an iteration over {@link PushResult} objects
-	 * @throws InvalidRemoteException
-	 *             when called with an invalid remote uri
-	 * @throws org.eclipse.jgit.api.errors.TransportException
-	 *             when an error occurs with the transport
-	 * @throws GitAPIException
 	 */
+	@Override
 	public Iterable<PushResult> call() throws GitAPIException,
 			InvalidRemoteException,
 			org.eclipse.jgit.api.errors.TransportException {
 		checkCallable();
 
-		ArrayList<PushResult> pushResults = new ArrayList<PushResult>(3);
+		ArrayList<PushResult> pushResults = new ArrayList<>(3);
 
 		try {
 			if (refSpecs.isEmpty()) {
@@ -145,7 +120,8 @@ public class PushCommand extends
 
 			final List<Transport> transports;
 			transports = Transport.openAll(repo, remote, Transport.Operation.PUSH);
-			for (final Transport transport : transports) {
+			for (@SuppressWarnings("resource") // Explicitly closed in finally
+					final Transport transport : transports) {
 				transport.setPushThin(thin);
 				transport.setPushAtomic(atomic);
 				if (receivePack != null)
@@ -155,7 +131,7 @@ public class PushCommand extends
 				configure(transport);
 
 				final Collection<RemoteRefUpdate> toPush = transport
-						.findRemoteRefUpdatesFor(refSpecs);
+						.findRemoteRefUpdatesFor(refSpecs, refLeaseSpecs);
 
 				try {
 					PushResult result = transport.push(monitor, toPush, out);
@@ -176,8 +152,9 @@ public class PushCommand extends
 			}
 
 		} catch (URISyntaxException e) {
-			throw new InvalidRemoteException(MessageFormat.format(
-					JGitText.get().invalidRemote, remote));
+			throw new InvalidRemoteException(
+					MessageFormat.format(JGitText.get().invalidRemote, remote),
+					e);
 		} catch (TransportException e) {
 			throw new org.eclipse.jgit.api.errors.TransportException(
 					e.getMessage(), e);
@@ -201,6 +178,7 @@ public class PushCommand extends
 	 *
 	 * @see Constants#DEFAULT_REMOTE_NAME
 	 * @param remote
+	 *            the remote name
 	 * @return {@code this}
 	 */
 	public PushCommand setRemote(String remote) {
@@ -210,6 +188,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get remote name
+	 *
 	 * @return the remote used for the remote operation
 	 */
 	public String getRemote() {
@@ -223,6 +203,8 @@ public class PushCommand extends
 	 *
 	 * @see RemoteConfig#DEFAULT_RECEIVE_PACK
 	 * @param receivePack
+	 *            name of the remote executable providing the receive-pack
+	 *            service
 	 * @return {@code this}
 	 */
 	public PushCommand setReceivePack(String receivePack) {
@@ -232,6 +214,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get the name of the remote executable providing the receive-pack service
+	 *
 	 * @return the receive-pack used for the remote operation
 	 */
 	public String getReceivePack() {
@@ -239,6 +223,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get timeout used for push operation
+	 *
 	 * @return the timeout used for the push operation
 	 */
 	public int getTimeout() {
@@ -246,6 +232,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get the progress monitor
+	 *
 	 * @return the progress monitor for the push operation
 	 */
 	public ProgressMonitor getProgressMonitor() {
@@ -257,8 +245,8 @@ public class PushCommand extends
 	 * is set to <code>NullProgressMonitor</code>
 	 *
 	 * @see NullProgressMonitor
-	 *
 	 * @param monitor
+	 *            a {@link org.eclipse.jgit.lib.ProgressMonitor}
 	 * @return {@code this}
 	 */
 	public PushCommand setProgressMonitor(ProgressMonitor monitor) {
@@ -271,6 +259,49 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get the <code>RefLeaseSpec</code>s.
+	 *
+	 * @return the <code>RefLeaseSpec</code>s
+	 * @since 4.7
+	 */
+	public List<RefLeaseSpec> getRefLeaseSpecs() {
+		return new ArrayList<>(refLeaseSpecs.values());
+	}
+
+	/**
+	 * The ref lease specs to be used in the push operation, for a
+	 * force-with-lease push operation.
+	 *
+	 * @param specs
+	 *            a {@link org.eclipse.jgit.transport.RefLeaseSpec} object.
+	 * @return {@code this}
+	 * @since 4.7
+	 */
+	public PushCommand setRefLeaseSpecs(RefLeaseSpec... specs) {
+		return setRefLeaseSpecs(Arrays.asList(specs));
+	}
+
+	/**
+	 * The ref lease specs to be used in the push operation, for a
+	 * force-with-lease push operation.
+	 *
+	 * @param specs
+	 *            list of {@code RefLeaseSpec}s
+	 * @return {@code this}
+	 * @since 4.7
+	 */
+	public PushCommand setRefLeaseSpecs(List<RefLeaseSpec> specs) {
+		checkCallable();
+		this.refLeaseSpecs.clear();
+		for (RefLeaseSpec spec : specs) {
+			refLeaseSpecs.put(spec.getRef(), spec);
+		}
+		return this;
+	}
+
+	/**
+	 * Get {@code RefSpec}s.
+	 *
 	 * @return the ref specs
 	 */
 	public List<RefSpec> getRefSpecs() {
@@ -280,7 +311,7 @@ public class PushCommand extends
 	/**
 	 * The ref specs to be used in the push operation
 	 *
-	 * @param specs
+	 * @param specs a {@link org.eclipse.jgit.transport.RefSpec} object.
 	 * @return {@code this}
 	 */
 	public PushCommand setRefSpecs(RefSpec... specs) {
@@ -294,6 +325,7 @@ public class PushCommand extends
 	 * The ref specs to be used in the push operation
 	 *
 	 * @param specs
+	 *            list of {@link org.eclipse.jgit.transport.RefSpec}s
 	 * @return {@code this}
 	 */
 	public PushCommand setRefSpecs(List<RefSpec> specs) {
@@ -363,6 +395,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Whether to run the push operation as a dry run
+	 *
 	 * @return the dry run preference for the push operation
 	 */
 	public boolean isDryRun() {
@@ -372,7 +406,7 @@ public class PushCommand extends
 	/**
 	 * Sets whether the push operation should be a dry run
 	 *
-	 * @param dryRun
+	 * @param dryRun a boolean.
 	 * @return {@code this}
 	 */
 	public PushCommand setDryRun(boolean dryRun) {
@@ -382,6 +416,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get the thin-pack preference
+	 *
 	 * @return the thin-pack preference for push operation
 	 */
 	public boolean isThin() {
@@ -389,11 +425,12 @@ public class PushCommand extends
 	}
 
 	/**
-	 * Sets the thin-pack preference for push operation.
+	 * Set the thin-pack preference for push operation.
 	 *
 	 * Default setting is Transport.DEFAULT_PUSH_THIN
 	 *
 	 * @param thin
+	 *            the thin-pack preference value
 	 * @return {@code this}
 	 */
 	public PushCommand setThin(boolean thin) {
@@ -403,6 +440,9 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Whether this push should be executed atomically (all references updated,
+	 * or none)
+	 *
 	 * @return true if all-or-nothing behavior is requested.
 	 * @since 4.2
 	 */
@@ -416,6 +456,7 @@ public class PushCommand extends
 	 * Default setting is false.
 	 *
 	 * @param atomic
+	 *            whether to run the push atomically
 	 * @return {@code this}
 	 * @since 4.2
 	 */
@@ -426,6 +467,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Whether to push forcefully
+	 *
 	 * @return the force preference for push operation
 	 */
 	public boolean isForce() {
@@ -436,6 +479,7 @@ public class PushCommand extends
 	 * Sets the force preference for push operation.
 	 *
 	 * @param force
+	 *            whether to push forcefully
 	 * @return {@code this}
 	 */
 	public PushCommand setForce(boolean force) {
@@ -448,6 +492,7 @@ public class PushCommand extends
 	 * Sets the output stream to write sideband messages to
 	 *
 	 * @param out
+	 *            an {@link java.io.OutputStream}
 	 * @return {@code this}
 	 * @since 3.0
 	 */
@@ -457,6 +502,8 @@ public class PushCommand extends
 	}
 
 	/**
+	 * Get push options
+	 *
 	 * @return the option strings associated with the push operation
 	 * @since 4.5
 	 */
@@ -465,9 +512,10 @@ public class PushCommand extends
 	}
 
 	/**
-	 * Sets the option strings associated with the push operation.
+	 * Set the option strings associated with the push operation.
 	 *
 	 * @param pushOptions
+	 *            a {@link java.util.List} of push option strings
 	 * @return {@code this}
 	 * @since 4.5
 	 */

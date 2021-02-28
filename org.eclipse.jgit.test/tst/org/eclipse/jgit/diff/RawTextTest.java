@@ -1,49 +1,18 @@
 /*
  * Copyright (C) 2009, Google Inc.
- * Copyright (C) 2009, Johannes E. Schindelin <johannes.schindelin@gmx.de>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2009, Johannes E. Schindelin <johannes.schindelin@gmx.de> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.diff;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -51,7 +20,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.util.RawParseUtils;
@@ -62,6 +30,49 @@ public class RawTextTest {
 	public void testEmpty() {
 		final RawText r = new RawText(new byte[0]);
 		assertEquals(0, r.size());
+	}
+
+	@Test
+	public void testNul() {
+		String input = "foo-a\nf\0o-b\n";
+		byte[] data = Constants.encodeASCII(input);
+		final RawText a = new RawText(data);
+		assertArrayEquals(a.content, data);
+		assertEquals(2, a.size());
+		assertEquals("foo-a\n", a.getString(0, 1, false));
+		assertEquals("f\0o-b\n", a.getString(1, 2, false));
+		assertEquals("foo-a", a.getString(0, 1, true));
+		assertEquals("f\0o-b", a.getString(1, 2, true));
+	}
+
+	@Test
+	public void testCrLfTextYes() {
+		assertTrue(RawText
+				.isCrLfText(Constants.encodeASCII("line 1\r\nline 2\r\n")));
+	}
+
+	@Test
+	public void testCrLfTextNo() {
+		assertFalse(
+				RawText.isCrLfText(Constants.encodeASCII("line 1\nline 2\n")));
+	}
+
+	@Test
+	public void testCrLfTextBinary() {
+		assertFalse(RawText
+				.isCrLfText(Constants.encodeASCII("line 1\r\nline\0 2\r\n")));
+	}
+
+	@Test
+	public void testCrLfTextMixed() {
+		assertTrue(RawText
+				.isCrLfText(Constants.encodeASCII("line 1\nline 2\r\n")));
+	}
+
+	@Test
+	public void testCrLfTextCutShort() {
+		assertFalse(
+				RawText.isCrLfText(Constants.encodeASCII("line 1\nline 2\r")));
 	}
 
 	@Test
@@ -110,8 +121,7 @@ public class RawTextTest {
 	}
 
 	@Test
-	public void testComparatorReduceCommonStartEnd()
-			throws UnsupportedEncodingException {
+	public void testComparatorReduceCommonStartEnd() {
 		final RawTextComparator c = RawTextComparator.DEFAULT;
 		Edit e;
 
@@ -137,54 +147,51 @@ public class RawTextTest {
 		e = c.reduceCommonStartEnd(t("abQxy"), t("abRxy"), e);
 		assertEquals(new Edit(2, 3, 2, 3), e);
 
-		RawText a = new RawText("p\na b\nQ\nc d\n".getBytes("UTF-8"));
-		RawText b = new RawText("p\na  b \nR\n c  d \n".getBytes("UTF-8"));
+		RawText a = new RawText("p\na b\nQ\nc d\n".getBytes(UTF_8));
+		RawText b = new RawText("p\na  b \nR\n c  d \n".getBytes(UTF_8));
 		e = new Edit(0, 4, 0, 4);
 		e = RawTextComparator.WS_IGNORE_ALL.reduceCommonStartEnd(a, b, e);
 		assertEquals(new Edit(2, 3, 2, 3), e);
 	}
 
 	@Test
-	public void testComparatorReduceCommonStartEnd_EmptyLine()
-			throws UnsupportedEncodingException {
+	public void testComparatorReduceCommonStartEnd_EmptyLine() {
 		RawText a;
 		RawText b;
 		Edit e;
 
-		a = new RawText("R\n y\n".getBytes("UTF-8"));
-		b = new RawText("S\n\n y\n".getBytes("UTF-8"));
+		a = new RawText("R\n y\n".getBytes(UTF_8));
+		b = new RawText("S\n\n y\n".getBytes(UTF_8));
 		e = new Edit(0, 2, 0, 3);
 		e = RawTextComparator.DEFAULT.reduceCommonStartEnd(a, b, e);
 		assertEquals(new Edit(0, 1, 0, 2), e);
 
-		a = new RawText("S\n\n y\n".getBytes("UTF-8"));
-		b = new RawText("R\n y\n".getBytes("UTF-8"));
+		a = new RawText("S\n\n y\n".getBytes(UTF_8));
+		b = new RawText("R\n y\n".getBytes(UTF_8));
 		e = new Edit(0, 3, 0, 2);
 		e = RawTextComparator.DEFAULT.reduceCommonStartEnd(a, b, e);
 		assertEquals(new Edit(0, 2, 0, 1), e);
 	}
 
 	@Test
-	public void testComparatorReduceCommonStartButLastLineNoEol()
-			throws UnsupportedEncodingException {
+	public void testComparatorReduceCommonStartButLastLineNoEol() {
 		RawText a;
 		RawText b;
 		Edit e;
-		a = new RawText("start".getBytes("UTF-8"));
-		b = new RawText("start of line".getBytes("UTF-8"));
+		a = new RawText("start".getBytes(UTF_8));
+		b = new RawText("start of line".getBytes(UTF_8));
 		e = new Edit(0, 1, 0, 1);
 		e = RawTextComparator.DEFAULT.reduceCommonStartEnd(a, b, e);
 		assertEquals(new Edit(0, 1, 0, 1), e);
 	}
 
 	@Test
-	public void testComparatorReduceCommonStartButLastLineNoEol_2()
-			throws UnsupportedEncodingException {
+	public void testComparatorReduceCommonStartButLastLineNoEol_2() {
 		RawText a;
 		RawText b;
 		Edit e;
-		a = new RawText("start".getBytes("UTF-8"));
-		b = new RawText("start of\nlastline".getBytes("UTF-8"));
+		a = new RawText("start".getBytes(UTF_8));
+		b = new RawText("start of\nlastline".getBytes(UTF_8));
 		e = new Edit(0, 1, 0, 2);
 		e = RawTextComparator.DEFAULT.reduceCommonStartEnd(a, b, e);
 		assertEquals(new Edit(0, 1, 0, 2), e);
@@ -243,10 +250,6 @@ public class RawTextTest {
 			r.append(text.charAt(i));
 			r.append('\n');
 		}
-		try {
-			return new RawText(r.toString().getBytes("UTF-8"));
-		} catch (UnsupportedEncodingException e) {
-			throw new RuntimeException(e);
-		}
+		return new RawText(r.toString().getBytes(UTF_8));
 	}
 }

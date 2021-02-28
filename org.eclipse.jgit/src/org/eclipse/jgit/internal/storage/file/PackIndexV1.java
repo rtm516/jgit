@@ -2,46 +2,13 @@
  * Copyright (C) 2008-2009, Google Inc.
  * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com>
  * Copyright (C) 2007-2009, Robin Rosenberg <robin.rosenberg@dewire.com>
- * Copyright (C) 2006-2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2006-2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.internal.storage.file;
@@ -82,11 +49,11 @@ class PackIndexV1 extends PackIndex {
 			idxHeader[k] = NB.decodeUInt32(fanoutTable, k * 4);
 		idxdata = new byte[idxHeader.length][];
 		for (int k = 0; k < idxHeader.length; k++) {
-			int n;
+			long n;
 			if (k == 0) {
-				n = (int) (idxHeader[k]);
+				n = idxHeader[k];
 			} else {
-				n = (int) (idxHeader[k] - idxHeader[k - 1]);
+				n = idxHeader[k] - idxHeader[k - 1];
 			}
 			if (n > 0) {
 				final long len = n * (Constants.OBJECT_ID_LENGTH + 4);
@@ -103,22 +70,24 @@ class PackIndexV1 extends PackIndex {
 		IO.readFully(fd, packChecksum, 0, packChecksum.length);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public long getObjectCount() {
 		return objectCnt;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public long getOffset64Count() {
 		long n64 = 0;
-		for (final MutableEntry e : this) {
+		for (MutableEntry e : this) {
 			if (e.getOffset() >= Integer.MAX_VALUE)
 				n64++;
 		}
 		return n64;
 	}
 
-	private int findLevelOne(final long nthPosition) {
+	private int findLevelOne(long nthPosition) {
 		int levelOne = Arrays.binarySearch(idxHeader, nthPosition + 1);
 		if (levelOne >= 0) {
 			// If we hit the bucket exactly the item is in the bucket, or
@@ -135,13 +104,14 @@ class PackIndexV1 extends PackIndex {
 		return levelOne;
 	}
 
-	private int getLevelTwo(final long nthPosition, final int levelOne) {
+	private int getLevelTwo(long nthPosition, int levelOne) {
 		final long base = levelOne > 0 ? idxHeader[levelOne - 1] : 0;
 		return (int) (nthPosition - base);
 	}
 
+	/** {@inheritDoc} */
 	@Override
-	public ObjectId getObjectId(final long nthPosition) {
+	public ObjectId getObjectId(long nthPosition) {
 		final int levelOne = findLevelOne(nthPosition);
 		final int p = getLevelTwo(nthPosition, levelOne);
 		final int dataIdx = idOffset(p);
@@ -156,8 +126,9 @@ class PackIndexV1 extends PackIndex {
 		return NB.decodeUInt32(idxdata[levelOne], p);
 	}
 
+	/** {@inheritDoc} */
 	@Override
-	public long findOffset(final AnyObjectId objId) {
+	public long findOffset(AnyObjectId objId) {
 		final int levelOne = objId.getFirstByte();
 		byte[] data = idxdata[levelOne];
 		if (data == null)
@@ -182,21 +153,25 @@ class PackIndexV1 extends PackIndex {
 		return -1;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public long findCRC32(AnyObjectId objId) {
 		throw new UnsupportedOperationException();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public boolean hasCRC32Support() {
 		return false;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Iterator<MutableEntry> iterator() {
 		return new IndexV1Iterator();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void resolve(Set<ObjectId> matches, AbbreviatedObjectId id,
 			int matchLimit) throws IOException {
@@ -240,6 +215,7 @@ class PackIndexV1 extends PackIndex {
 		@Override
 		protected MutableEntry initEntry() {
 			return new MutableEntry() {
+				@Override
 				protected void ensureId() {
 					idBuffer.fromRaw(idxdata[levelOne], levelTwo
 							- Constants.OBJECT_ID_LENGTH);
@@ -247,6 +223,7 @@ class PackIndexV1 extends PackIndex {
 			};
 		}
 
+		@Override
 		public MutableEntry next() {
 			for (; levelOne < idxdata.length; levelOne++) {
 				if (idxdata[levelOne] == null)

@@ -1,47 +1,15 @@
 /*
- * Copyright (C) 2010, 2013 Mathias Kinzler <mathias.kinzler@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, 2013 Mathias Kinzler <mathias.kinzler@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -74,6 +42,8 @@ import org.eclipse.jgit.errors.AmbiguousObjectException;
 import org.eclipse.jgit.errors.IllegalTodoFileModification;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.events.ChangeRecorder;
+import org.eclipse.jgit.events.ListenerHandle;
 import org.eclipse.jgit.junit.RepositoryTestCase;
 import org.eclipse.jgit.lib.AbbreviatedObjectId;
 import org.eclipse.jgit.lib.ConfigConstants;
@@ -1463,7 +1433,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		assertEquals("GIT_AUTHOR_DATE='@123456789 -0100'", lines[2]);
 
 		PersonIdent parsedIdent = git.rebase().parseAuthor(
-				convertedAuthor.getBytes("UTF-8"));
+				convertedAuthor.getBytes(UTF_8));
 		assertEquals(ident.getName(), parsedIdent.getName());
 		assertEquals(ident.getEmailAddress(), parsedIdent.getEmailAddress());
 		// this is rounded to the last second
@@ -1480,7 +1450,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		assertEquals("GIT_AUTHOR_DATE='@123456789 +0930'", lines[2]);
 
 		parsedIdent = git.rebase().parseAuthor(
-				convertedAuthor.getBytes("UTF-8"));
+				convertedAuthor.getBytes(UTF_8));
 		assertEquals(ident.getName(), parsedIdent.getName());
 		assertEquals(ident.getEmailAddress(), parsedIdent.getEmailAddress());
 		assertEquals(123456789000L, parsedIdent.getWhen().getTime());
@@ -1980,6 +1950,60 @@ public class RebaseCommandTest extends RepositoryTestCase {
 	}
 
 	@Test
+	public void testRebaseWithAutoStashAndSubdirs() throws Exception {
+		// create file0, add and commit
+		db.getConfig().setBoolean(ConfigConstants.CONFIG_REBASE_SECTION, null,
+				ConfigConstants.CONFIG_KEY_AUTOSTASH, true);
+		writeTrashFile("sub/file0", "file0");
+		git.add().addFilepattern("sub/file0").call();
+		git.commit().setMessage("commit0").call();
+		// create file1, add and commit
+		writeTrashFile(FILE1, "file1");
+		git.add().addFilepattern(FILE1).call();
+		RevCommit commit = git.commit().setMessage("commit1").call();
+
+		// create topic branch and checkout / create file2, add and commit
+		createBranch(commit, "refs/heads/topic");
+		checkoutBranch("refs/heads/topic");
+		writeTrashFile("file2", "file2");
+		git.add().addFilepattern("file2").call();
+		git.commit().setMessage("commit2").call();
+
+		// checkout master branch / modify file1, add and commit
+		checkoutBranch("refs/heads/master");
+		writeTrashFile(FILE1, "modified file1");
+		git.add().addFilepattern(FILE1).call();
+		git.commit().setMessage("commit3").call();
+
+		// checkout topic branch / modify file0
+		checkoutBranch("refs/heads/topic");
+		writeTrashFile("sub/file0", "unstaged modified file0");
+
+		ChangeRecorder recorder = new ChangeRecorder();
+		ListenerHandle handle = db.getListenerList()
+				.addWorkingTreeModifiedListener(recorder);
+		try {
+			// rebase
+			assertEquals(Status.OK, git.rebase()
+					.setUpstream("refs/heads/master").call().getStatus());
+		} finally {
+			handle.remove();
+		}
+		checkFile(new File(new File(db.getWorkTree(), "sub"), "file0"),
+				"unstaged modified file0");
+		checkFile(new File(db.getWorkTree(), FILE1), "modified file1");
+		checkFile(new File(db.getWorkTree(), "file2"), "file2");
+		assertEquals(
+				"[file1, mode:100644, content:modified file1]"
+						+ "[file2, mode:100644, content:file2]"
+						+ "[sub/file0, mode:100644, content:file0]",
+				indexState(CONTENT));
+		assertEquals(RepositoryState.SAFE, db.getRepositoryState());
+		recorder.assertEvent(new String[] { "file1", "file2", "sub/file0" },
+				new String[0]);
+	}
+
+	@Test
 	public void testRebaseWithAutoStashConflictOnApply() throws Exception {
 		// create file0, add and commit
 		db.getConfig().setBoolean(ConfigConstants.CONFIG_REBASE_SECTION, null,
@@ -2075,10 +2099,12 @@ public class RebaseCommandTest extends RepositoryTestCase {
 	private List<DiffEntry> getStashedDiff() throws AmbiguousObjectException,
 			IncorrectObjectTypeException, IOException, MissingObjectException {
 		ObjectId stashId = db.resolve("stash@{0}");
-		RevWalk revWalk = new RevWalk(db);
-		RevCommit stashCommit = revWalk.parseCommit(stashId);
-		List<DiffEntry> diffs = diffWorkingAgainstHead(stashCommit, revWalk);
-		return diffs;
+		try (RevWalk revWalk = new RevWalk(db)) {
+			RevCommit stashCommit = revWalk.parseCommit(stashId);
+			List<DiffEntry> diffs = diffWorkingAgainstHead(stashCommit,
+					revWalk);
+			return diffs;
+		}
 	}
 
 	private TreeWalk createTreeWalk() {
@@ -2102,9 +2128,8 @@ public class RebaseCommandTest extends RepositoryTestCase {
 	private int countPicks() throws IOException {
 		int count = 0;
 		File todoFile = getTodoFile();
-		BufferedReader br = new BufferedReader(new InputStreamReader(
-				new FileInputStream(todoFile), "UTF-8"));
-		try {
+		try (BufferedReader br = new BufferedReader(new InputStreamReader(
+				new FileInputStream(todoFile), UTF_8))) {
 			String line = br.readLine();
 			while (line != null) {
 				int firstBlank = line.indexOf(' ');
@@ -2122,8 +2147,6 @@ public class RebaseCommandTest extends RepositoryTestCase {
 				line = br.readLine();
 			}
 			return count;
-		} finally {
-			br.close();
 		}
 	}
 
@@ -2269,11 +2292,13 @@ public class RebaseCommandTest extends RepositoryTestCase {
 
 		RebaseResult res = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						steps.add(0, new RebaseTodoLine(
 								"# Comment that should not be processed"));
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						fail("modifyCommitMessage() was not expected to be called");
 						return commit;
@@ -2284,6 +2309,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 
 		RebaseResult res2 = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							// delete RevCommit c4
@@ -2293,6 +2319,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						fail("modifyCommitMessage() was not expected to be called");
 						return commit;
@@ -2514,6 +2541,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		RebaseResult res = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.REWORD);
@@ -2522,6 +2550,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return "rewritten commit message";
 					}
@@ -2560,6 +2589,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 
 		RebaseResult res = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.EDIT);
@@ -2568,6 +2598,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return ""; // not used
 					}
@@ -2624,6 +2655,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~3")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(1).setAction(Action.SQUASH);
@@ -2632,6 +2664,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						final File messageSquashFile = new File(db
 								.getDirectory(), "rebase-merge/message-squash");
@@ -2704,6 +2737,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~4")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(1).setAction(Action.SQUASH);
@@ -2713,6 +2747,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						final File messageSquashFile = new File(db.getDirectory(),
 								"rebase-merge/message-squash");
@@ -2786,6 +2821,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~4")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(1).setAction(Action.FIXUP);
@@ -2795,6 +2831,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						final File messageSquashFile = new File(db
 								.getDirectory(), "rebase-merge/message-squash");
@@ -2861,6 +2898,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~3")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(1).setAction(Action.FIXUP);
@@ -2869,6 +2907,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						fail("No callback to modify commit message expected for single fixup");
 						return commit;
@@ -2910,6 +2949,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(1).setAction(Action.FIXUP);
@@ -2918,6 +2958,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						fail("No callback to modify commit message expected for single fixup");
 						return commit;
@@ -2950,6 +2991,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~1")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.FIXUP);
@@ -2958,6 +3000,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return commit;
 					}
@@ -2982,6 +3025,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~1")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.SQUASH);
@@ -2990,6 +3034,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return commit;
 					}
@@ -3013,6 +3058,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.rebase().setUpstream("HEAD~1")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.EDIT);
@@ -3021,6 +3067,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return commit;
 					}
@@ -3055,6 +3102,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		RebaseResult result = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						steps.remove(0);
 						try {
@@ -3064,6 +3112,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return commit;
 					}
@@ -3097,6 +3146,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		RebaseResult result = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						steps.remove(0);
 						try {
@@ -3106,6 +3156,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return "rewritten commit message";
 					}
@@ -3114,6 +3165,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.add().addFilepattern(FILE1).call();
 		result = git.rebase().runInteractively(new InteractiveHandler() {
 
+			@Override
 			public void prepareSteps(List<RebaseTodoLine> steps) {
 				steps.remove(0);
 				try {
@@ -3123,6 +3175,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 				}
 			}
 
+			@Override
 			public String modifyCommitMessage(String commit) {
 				return "rewritten commit message";
 			}
@@ -3160,6 +3213,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		RebaseResult result = git.rebase().setUpstream("HEAD~3")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.PICK);
@@ -3170,6 +3224,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return "squashed message";
 					}
@@ -3178,6 +3233,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.add().addFilepattern(FILE1).call();
 		result = git.rebase().runInteractively(new InteractiveHandler() {
 
+			@Override
 			public void prepareSteps(List<RebaseTodoLine> steps) {
 				try {
 					steps.get(0).setAction(Action.PICK);
@@ -3188,6 +3244,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 				}
 			}
 
+			@Override
 			public String modifyCommitMessage(String commit) {
 				return "squashed message";
 			}
@@ -3226,6 +3283,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		RebaseResult result = git.rebase().setUpstream("HEAD~3")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.PICK);
@@ -3236,6 +3294,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return commit;
 					}
@@ -3244,6 +3303,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		git.add().addFilepattern(FILE1).call();
 		result = git.rebase().runInteractively(new InteractiveHandler() {
 
+			@Override
 			public void prepareSteps(List<RebaseTodoLine> steps) {
 				try {
 					steps.get(0).setAction(Action.PICK);
@@ -3254,6 +3314,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 				}
 			}
 
+			@Override
 			public String modifyCommitMessage(String commit) {
 				return "commit";
 			}
@@ -3297,6 +3358,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 		RebaseResult result = git.rebase().setUpstream("HEAD~2")
 				.runInteractively(new InteractiveHandler() {
 
+					@Override
 					public void prepareSteps(List<RebaseTodoLine> steps) {
 						try {
 							steps.get(0).setAction(Action.EDIT);
@@ -3306,6 +3368,7 @@ public class RebaseCommandTest extends RepositoryTestCase {
 						}
 					}
 
+					@Override
 					public String modifyCommitMessage(String commit) {
 						return commit;
 					}

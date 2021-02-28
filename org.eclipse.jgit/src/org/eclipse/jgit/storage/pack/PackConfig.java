@@ -1,48 +1,40 @@
 /*
  * Copyright (C) 2008-2010, Google Inc.
- * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.storage.pack;
+
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_CORE_SECTION;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BIGFILE_THRESHOLD;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BITMAP_CONTIGUOUS_COMMIT_COUNT;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BITMAP_DISTANT_COMMIT_SPAN;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BITMAP_EXCESSIVE_BRANCH_COUNT;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BITMAP_INACTIVE_BRANCH_AGE_INDAYS;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BITMAP_RECENT_COMMIT_COUNT;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_BUILD_BITMAPS;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_COMPRESSION;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_CUT_DELTACHAINS;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_DELTA_CACHE_LIMIT;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_DELTA_CACHE_SIZE;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_DELTA_COMPRESSION;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_DEPTH;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_INDEXVERSION;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_MIN_SIZE_PREVENT_RACYPACK;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_REUSE_DELTAS;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_REUSE_OBJECTS;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_SINGLE_PACK;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_THREADS;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_WAIT_PREVENT_RACYPACK;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_WINDOW;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_WINDOW_MEMORY;
+import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_PACK_SECTION;
 
 import java.util.concurrent.Executor;
 import java.util.zip.Deflater;
@@ -75,6 +67,20 @@ public class PackConfig {
 	public static final boolean DEFAULT_REUSE_OBJECTS = true;
 
 	/**
+	 * Default value of keep old packs option: {@value}
+	 * @see #setPreserveOldPacks(boolean)
+	 * @since 4.7
+	 */
+	public static final boolean DEFAULT_PRESERVE_OLD_PACKS = false;
+
+	/**
+	 * Default value of prune old packs option: {@value}
+	 * @see #setPrunePreserved(boolean)
+	 * @since 4.7
+	 */
+	public static final boolean DEFAULT_PRUNE_PRESERVED = false;
+
+	/**
 	 * Default value of delta compress option: {@value}
 	 *
 	 * @see #setDeltaCompress(boolean)
@@ -102,12 +108,30 @@ public class PackConfig {
 	 */
 	public static final int DEFAULT_DELTA_SEARCH_WINDOW_SIZE = 10;
 
+	private static final int MB = 1 << 20;
+
 	/**
 	 * Default big file threshold: {@value}
 	 *
 	 * @see #setBigFileThreshold(int)
 	 */
-	public static final int DEFAULT_BIG_FILE_THRESHOLD = 50 * 1024 * 1024;
+	public static final int DEFAULT_BIG_FILE_THRESHOLD = 50 * MB;
+
+	/**
+	 * Default if we wait before opening a newly written pack to prevent its
+	 * lastModified timestamp could be racy
+	 *
+	 * @since 5.1.8
+	 */
+	public static final boolean DEFAULT_WAIT_PREVENT_RACY_PACK = false;
+
+	/**
+	 * Default if we wait before opening a newly written pack to prevent its
+	 * lastModified timestamp could be racy
+	 *
+	 * @since 5.1.8
+	 */
+	public static final long DEFAULT_MINSIZE_PREVENT_RACY_PACK = 100 * MB;
 
 	/**
 	 * Default delta cache size: {@value}
@@ -204,6 +228,10 @@ public class PackConfig {
 
 	private boolean reuseObjects = DEFAULT_REUSE_OBJECTS;
 
+	private boolean preserveOldPacks = DEFAULT_PRESERVE_OLD_PACKS;
+
+	private boolean prunePreserved = DEFAULT_PRUNE_PRESERVED;
+
 	private boolean deltaBaseAsOffset = DEFAULT_DELTA_BASE_AS_OFFSET;
 
 	private boolean deltaCompress = DEFAULT_DELTA_COMPRESS;
@@ -219,6 +247,10 @@ public class PackConfig {
 	private int deltaCacheLimit = DEFAULT_DELTA_CACHE_LIMIT;
 
 	private int bigFileThreshold = DEFAULT_BIG_FILE_THRESHOLD;
+
+	private boolean waitPreventRacyPack = DEFAULT_WAIT_PREVENT_RACY_PACK;
+
+	private long minSizePreventRacyPack = DEFAULT_MINSIZE_PREVENT_RACY_PACK;
 
 	private int threads;
 
@@ -242,7 +274,11 @@ public class PackConfig {
 
 	private boolean cutDeltaChains;
 
-	/** Create a default configuration. */
+	private boolean singlePack;
+
+	/**
+	 * Create a default configuration.
+	 */
 	public PackConfig() {
 		// Fields are initialized to defaults.
 	}
@@ -260,7 +296,8 @@ public class PackConfig {
 	}
 
 	/**
-	 * Create a configuration honoring settings in a {@link Config}.
+	 * Create a configuration honoring settings in a
+	 * {@link org.eclipse.jgit.lib.Config}.
 	 *
 	 * @param cfg
 	 *            the source to read settings from. The source is not retained
@@ -281,6 +318,8 @@ public class PackConfig {
 		this.compressionLevel = cfg.compressionLevel;
 		this.reuseDeltas = cfg.reuseDeltas;
 		this.reuseObjects = cfg.reuseObjects;
+		this.preserveOldPacks = cfg.preserveOldPacks;
+		this.prunePreserved = cfg.prunePreserved;
 		this.deltaBaseAsOffset = cfg.deltaBaseAsOffset;
 		this.deltaCompress = cfg.deltaCompress;
 		this.maxDeltaDepth = cfg.maxDeltaDepth;
@@ -289,6 +328,8 @@ public class PackConfig {
 		this.deltaCacheSize = cfg.deltaCacheSize;
 		this.deltaCacheLimit = cfg.deltaCacheLimit;
 		this.bigFileThreshold = cfg.bigFileThreshold;
+		this.waitPreventRacyPack = cfg.waitPreventRacyPack;
+		this.minSizePreventRacyPack = cfg.minSizePreventRacyPack;
 		this.threads = cfg.threads;
 		this.executor = cfg.executor;
 		this.indexVersion = cfg.indexVersion;
@@ -300,6 +341,7 @@ public class PackConfig {
 		this.bitmapExcessiveBranchCount = cfg.bitmapExcessiveBranchCount;
 		this.bitmapInactiveBranchAgeInDays = cfg.bitmapInactiveBranchAgeInDays;
 		this.cutDeltaChains = cfg.cutDeltaChains;
+		this.singlePack = cfg.singlePack;
 	}
 
 	/**
@@ -361,6 +403,61 @@ public class PackConfig {
 	 */
 	public void setReuseObjects(boolean reuseObjects) {
 		this.reuseObjects = reuseObjects;
+	}
+
+	/**
+	 * Checks whether to preserve old packs in a preserved directory
+	 *
+	 * Default setting: {@value #DEFAULT_PRESERVE_OLD_PACKS}
+	 *
+	 * @return true if repacking will preserve old pack files.
+	 * @since 4.7
+	 */
+	public boolean isPreserveOldPacks() {
+		return preserveOldPacks;
+	}
+
+	/**
+	 * Set preserve old packs configuration option for repacking.
+	 *
+	 * If enabled, old pack files are moved into a preserved subdirectory instead
+	 * of being deleted
+	 *
+	 * Default setting: {@value #DEFAULT_PRESERVE_OLD_PACKS}
+	 *
+	 * @param preserveOldPacks
+	 *            boolean indicating whether or not preserve old pack files
+	 * @since 4.7
+	 */
+	public void setPreserveOldPacks(boolean preserveOldPacks) {
+		this.preserveOldPacks = preserveOldPacks;
+	}
+
+	/**
+	 * Checks whether to remove preserved pack files in a preserved directory
+	 *
+	 * Default setting: {@value #DEFAULT_PRUNE_PRESERVED}
+	 *
+	 * @return true if repacking will remove preserved pack files.
+	 * @since 4.7
+	 */
+	public boolean isPrunePreserved() {
+		return prunePreserved;
+	}
+
+	/**
+	 * Set prune preserved configuration option for repacking.
+	 *
+	 * If enabled, preserved pack files are removed from a preserved subdirectory
+	 *
+	 * Default setting: {@value #DEFAULT_PRESERVE_OLD_PACKS}
+	 *
+	 * @param prunePreserved
+	 *            boolean indicating whether or not preserve old pack files
+	 * @since 4.7
+	 */
+	public void setPrunePreserved(boolean prunePreserved) {
+		this.prunePreserved = prunePreserved;
 	}
 
 	/**
@@ -453,6 +550,9 @@ public class PackConfig {
 	}
 
 	/**
+	 * Whether existing delta chains should be cut at
+	 * {@link #getMaxDeltaDepth()}.
+	 *
 	 * @return true if existing delta chains should be cut at
 	 *         {@link #getMaxDeltaDepth()}. Default is false, allowing existing
 	 *         chains to be of any length.
@@ -477,6 +577,32 @@ public class PackConfig {
 	 */
 	public void setCutDeltaChains(boolean cut) {
 		cutDeltaChains = cut;
+	}
+
+	/**
+	 * Whether all of refs/* should be packed in a single pack.
+	 *
+	 * @return true if all of refs/* should be packed in a single pack. Default
+	 *         is false, packing a separate GC_REST pack for references outside
+	 *         of refs/heads/* and refs/tags/*.
+	 * @since 4.9
+	 */
+	public boolean getSinglePack() {
+		return singlePack;
+	}
+
+	/**
+	 * If {@code true}, packs a single GC pack for all objects reachable from
+	 * refs/*. Otherwise packs the GC pack with objects reachable from
+	 * refs/heads/* and refs/tags/*, and a GC_REST pack with the remaining
+	 * reachable objects. Disabled by default, packing GC and GC_REST.
+	 *
+	 * @param single
+	 *            true to pack a single GC pack rather than GC and GC_REST packs
+	 * @since 4.9
+	 */
+	public void setSinglePack(boolean single) {
+		singlePack = single;
 	}
 
 	/**
@@ -627,6 +753,76 @@ public class PackConfig {
 	}
 
 	/**
+	 * Get whether we wait before opening a newly written pack to prevent its
+	 * lastModified timestamp could be racy
+	 *
+	 * @return whether we wait before opening a newly written pack to prevent
+	 *         its lastModified timestamp could be racy
+	 * @since 5.1.8
+	 */
+	public boolean isWaitPreventRacyPack() {
+		return waitPreventRacyPack;
+	}
+
+	/**
+	 * Get whether we wait before opening a newly written pack to prevent its
+	 * lastModified timestamp could be racy. Returns {@code true} if
+	 * {@code waitToPreventRacyPack = true} and
+	 * {@code packSize > minSizePreventRacyPack}, {@code false} otherwise.
+	 *
+	 * @param packSize
+	 *            size of the pack file
+	 *
+	 * @return whether we wait before opening a newly written pack to prevent
+	 *         its lastModified timestamp could be racy
+	 * @since 5.1.8
+	 */
+	public boolean doWaitPreventRacyPack(long packSize) {
+		return isWaitPreventRacyPack()
+				&& packSize > getMinSizePreventRacyPack();
+	}
+
+	/**
+	 * Set whether we wait before opening a newly written pack to prevent its
+	 * lastModified timestamp could be racy
+	 *
+	 * @param waitPreventRacyPack
+	 *            whether we wait before opening a newly written pack to prevent
+	 *            its lastModified timestamp could be racy
+	 * @since 5.1.8
+	 */
+	public void setWaitPreventRacyPack(boolean waitPreventRacyPack) {
+		this.waitPreventRacyPack = waitPreventRacyPack;
+	}
+
+	/**
+	 * Get minimum packfile size for which we wait before opening a newly
+	 * written pack to prevent its lastModified timestamp could be racy if
+	 * {@code isWaitToPreventRacyPack} is {@code true}.
+	 *
+	 * @return minimum packfile size, default is 100 MiB
+	 *
+	 * @since 5.1.8
+	 */
+	public long getMinSizePreventRacyPack() {
+		return minSizePreventRacyPack;
+	}
+
+	/**
+	 * Set minimum packfile size for which we wait before opening a newly
+	 * written pack to prevent its lastModified timestamp could be racy if
+	 * {@code isWaitToPreventRacyPack} is {@code true}.
+	 *
+	 * @param minSizePreventRacyPack
+	 *            minimum packfile size, default is 100 MiB
+	 *
+	 * @since 5.1.8
+	 */
+	public void setMinSizePreventRacyPack(long minSizePreventRacyPack) {
+		this.minSizePreventRacyPack = minSizePreventRacyPack;
+	}
+
+	/**
 	 * Get the compression level applied to objects in the pack.
 	 *
 	 * Default setting: {@value java.util.zip.Deflater#DEFAULT_COMPRESSION}
@@ -683,7 +879,11 @@ public class PackConfig {
 		this.threads = threads;
 	}
 
-	/** @return the preferred thread pool to execute delta search on. */
+	/**
+	 * Get the preferred thread pool to execute delta search on.
+	 *
+	 * @return the preferred thread pool to execute delta search on.
+	 */
 	public Executor getExecutor() {
 		return executor;
 	}
@@ -892,7 +1092,7 @@ public class PackConfig {
 	}
 
 	/**
-	 * Get the the age in days that marks a branch as "inactive".
+	 * Get the age in days that marks a branch as "inactive".
 	 *
 	 * Default setting: {@value #DEFAULT_BITMAP_INACTIVE_BRANCH_AGE_IN_DAYS}
 	 *
@@ -904,7 +1104,7 @@ public class PackConfig {
 	}
 
 	/**
-	 * Set the the age in days that marks a branch as "inactive".
+	 * Set the age in days that marks a branch as "inactive".
 	 *
 	 * Default setting: {@value #DEFAULT_BITMAP_INACTIVE_BRANCH_AGE_IN_DAYS}
 	 *
@@ -925,50 +1125,69 @@ public class PackConfig {
 	 * @param rc
 	 *            configuration to read properties from.
 	 */
-	public void fromConfig(final Config rc) {
-		setMaxDeltaDepth(rc.getInt("pack", "depth", getMaxDeltaDepth())); //$NON-NLS-1$ //$NON-NLS-2$
-		setDeltaSearchWindowSize(rc.getInt(
-				"pack", "window", getDeltaSearchWindowSize())); //$NON-NLS-1$ //$NON-NLS-2$
-		setDeltaSearchMemoryLimit(rc.getLong(
-				"pack", "windowmemory", getDeltaSearchMemoryLimit())); //$NON-NLS-1$ //$NON-NLS-2$
-		setDeltaCacheSize(rc.getLong(
-				"pack", "deltacachesize", getDeltaCacheSize())); //$NON-NLS-1$ //$NON-NLS-2$
-		setDeltaCacheLimit(rc.getInt(
-				"pack", "deltacachelimit", getDeltaCacheLimit())); //$NON-NLS-1$ //$NON-NLS-2$
-		setCompressionLevel(rc.getInt("pack", "compression", //$NON-NLS-1$ //$NON-NLS-2$
-				rc.getInt("core", "compression", getCompressionLevel()))); //$NON-NLS-1$ //$NON-NLS-2$
-		setIndexVersion(rc.getInt("pack", "indexversion", getIndexVersion())); //$NON-NLS-1$ //$NON-NLS-2$
-		setBigFileThreshold(rc.getInt(
-				"core", "bigfilethreshold", getBigFileThreshold())); //$NON-NLS-1$ //$NON-NLS-2$
-		setThreads(rc.getInt("pack", "threads", getThreads())); //$NON-NLS-1$ //$NON-NLS-2$
+	public void fromConfig(Config rc) {
+		setMaxDeltaDepth(rc.getInt(CONFIG_PACK_SECTION, CONFIG_KEY_DEPTH,
+				getMaxDeltaDepth()));
+		setDeltaSearchWindowSize(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_WINDOW, getDeltaSearchWindowSize()));
+		setDeltaSearchMemoryLimit(rc.getLong(CONFIG_PACK_SECTION,
+				CONFIG_KEY_WINDOW_MEMORY, getDeltaSearchMemoryLimit()));
+		setDeltaCacheSize(rc.getLong(CONFIG_PACK_SECTION,
+				CONFIG_KEY_DELTA_CACHE_SIZE, getDeltaCacheSize()));
+		setDeltaCacheLimit(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_DELTA_CACHE_LIMIT, getDeltaCacheLimit()));
+		setCompressionLevel(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_COMPRESSION, rc.getInt(CONFIG_CORE_SECTION,
+						CONFIG_KEY_COMPRESSION, getCompressionLevel())));
+		setIndexVersion(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_INDEXVERSION,
+				getIndexVersion()));
+		setBigFileThreshold(rc.getInt(CONFIG_CORE_SECTION,
+				CONFIG_KEY_BIGFILE_THRESHOLD, getBigFileThreshold()));
+		setThreads(rc.getInt(CONFIG_PACK_SECTION, CONFIG_KEY_THREADS,
+				getThreads()));
 
 		// These variables aren't standardized
-		//
-		setReuseDeltas(rc.getBoolean("pack", "reusedeltas", isReuseDeltas())); //$NON-NLS-1$ //$NON-NLS-2$
-		setReuseObjects(
-				rc.getBoolean("pack", "reuseobjects", isReuseObjects())); //$NON-NLS-1$ //$NON-NLS-2$
-		setDeltaCompress(
-				rc.getBoolean("pack", "deltacompression", isDeltaCompress())); //$NON-NLS-1$ //$NON-NLS-2$
-		setCutDeltaChains(
-				rc.getBoolean("pack", "cutdeltachains", getCutDeltaChains())); //$NON-NLS-1$ //$NON-NLS-2$
-		setBuildBitmaps(
-				rc.getBoolean("pack", "buildbitmaps", isBuildBitmaps())); //$NON-NLS-1$ //$NON-NLS-2$
-		setBitmapContiguousCommitCount(
-				rc.getInt("pack", "bitmapcontiguouscommitcount", //$NON-NLS-1$ //$NON-NLS-2$
-						getBitmapContiguousCommitCount()));
-		setBitmapRecentCommitCount(rc.getInt("pack", "bitmaprecentcommitcount", //$NON-NLS-1$ //$NON-NLS-2$
+		setReuseDeltas(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_REUSE_DELTAS, isReuseDeltas()));
+		setReuseObjects(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_REUSE_OBJECTS, isReuseObjects()));
+		setDeltaCompress(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_DELTA_COMPRESSION, isDeltaCompress()));
+		setCutDeltaChains(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_CUT_DELTACHAINS, getCutDeltaChains()));
+		setSinglePack(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_SINGLE_PACK,
+				getSinglePack()));
+		setBuildBitmaps(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BUILD_BITMAPS, isBuildBitmaps()));
+		setBitmapContiguousCommitCount(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BITMAP_CONTIGUOUS_COMMIT_COUNT,
+				getBitmapContiguousCommitCount()));
+		setBitmapRecentCommitCount(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BITMAP_RECENT_COMMIT_COUNT,
 				getBitmapRecentCommitCount()));
-		setBitmapRecentCommitSpan(rc.getInt("pack", "bitmaprecentcommitspan", //$NON-NLS-1$ //$NON-NLS-2$
+		setBitmapRecentCommitSpan(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BITMAP_RECENT_COMMIT_COUNT,
 				getBitmapRecentCommitSpan()));
-		setBitmapDistantCommitSpan(rc.getInt("pack", "bitmapdistantcommitspan", //$NON-NLS-1$ //$NON-NLS-2$
+		setBitmapDistantCommitSpan(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BITMAP_DISTANT_COMMIT_SPAN,
 				getBitmapDistantCommitSpan()));
-		setBitmapExcessiveBranchCount(rc.getInt("pack", //$NON-NLS-1$
-				"bitmapexcessivebranchcount", getBitmapExcessiveBranchCount())); //$NON-NLS-1$
-		setBitmapInactiveBranchAgeInDays(
-				rc.getInt("pack", "bitmapinactivebranchageindays", //$NON-NLS-1$ //$NON-NLS-2$
-						getBitmapInactiveBranchAgeInDays()));
+		setBitmapExcessiveBranchCount(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BITMAP_EXCESSIVE_BRANCH_COUNT,
+				getBitmapExcessiveBranchCount()));
+		setBitmapInactiveBranchAgeInDays(rc.getInt(CONFIG_PACK_SECTION,
+				CONFIG_KEY_BITMAP_INACTIVE_BRANCH_AGE_INDAYS,
+				getBitmapInactiveBranchAgeInDays()));
+		setWaitPreventRacyPack(rc.getBoolean(CONFIG_PACK_SECTION,
+				CONFIG_KEY_WAIT_PREVENT_RACYPACK, isWaitPreventRacyPack()));
+		setMinSizePreventRacyPack(rc.getLong(CONFIG_PACK_SECTION,
+				CONFIG_KEY_MIN_SIZE_PREVENT_RACYPACK,
+				getMinSizePreventRacyPack()));
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public String toString() {
 		final StringBuilder b = new StringBuilder();
 		b.append("maxDeltaDepth=").append(getMaxDeltaDepth()); //$NON-NLS-1$
@@ -997,6 +1216,7 @@ public class PackConfig {
 				.append(getBitmapExcessiveBranchCount());
 		b.append(", bitmapInactiveBranchAge=") //$NON-NLS-1$
 				.append(getBitmapInactiveBranchAgeInDays());
+		b.append(", singlePack=").append(getSinglePack()); //$NON-NLS-1$
 		return b.toString();
 	}
 }

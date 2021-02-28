@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.transport;
@@ -48,7 +15,7 @@ import java.io.OutputStream;
 import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -124,10 +91,10 @@ class PushProcess {
 			throws TransportException {
 		this.walker = new RevWalk(transport.local);
 		this.transport = transport;
-		this.toPush = new HashMap<String, RemoteRefUpdate>();
+		this.toPush = new LinkedHashMap<>();
 		this.out = out;
 		this.pushOptions = transport.getPushOptions();
-		for (final RemoteRefUpdate rru : toPush) {
+		for (RemoteRefUpdate rru : toPush) {
 			if (this.toPush.put(rru.getRemoteName(), rru) != null)
 				throw new TransportException(MessageFormat.format(
 						JGitText.get().duplicateRemoteRefUpdateIsIllegal, rru.getRemoteName()));
@@ -150,7 +117,7 @@ class PushProcess {
 	 *             when some error occurred during operation, like I/O, protocol
 	 *             error, or local database consistency error.
 	 */
-	PushResult execute(final ProgressMonitor monitor)
+	PushResult execute(ProgressMonitor monitor)
 			throws NotSupportedException, TransportException {
 		try {
 			monitor.beginTask(PROGRESS_OPENING_CONNECTION,
@@ -176,7 +143,7 @@ class PushProcess {
 			}
 			if (!transport.isDryRun())
 				updateTrackingRefs();
-			for (final RemoteRefUpdate rru : toPush.values()) {
+			for (RemoteRefUpdate rru : toPush.values()) {
 				final TrackingRefUpdate tru = rru.getTrackingRefUpdate();
 				if (tru != null)
 					res.add(tru);
@@ -190,8 +157,8 @@ class PushProcess {
 	private Map<String, RemoteRefUpdate> prepareRemoteUpdates()
 			throws TransportException {
 		boolean atomic = transport.isPushAtomic();
-		final Map<String, RemoteRefUpdate> result = new HashMap<String, RemoteRefUpdate>();
-		for (final RemoteRefUpdate rru : toPush.values()) {
+		final Map<String, RemoteRefUpdate> result = new LinkedHashMap<>();
+		for (RemoteRefUpdate rru : toPush.values()) {
 			final Ref advertisedRef = connection.getRef(rru.getRemoteName());
 			ObjectId advertisedOld = null;
 			if (advertisedRef != null) {
@@ -277,13 +244,13 @@ class PushProcess {
 	}
 
 	private void modifyUpdatesForDryRun() {
-		for (final RemoteRefUpdate rru : toPush.values())
+		for (RemoteRefUpdate rru : toPush.values())
 			if (rru.getStatus() == Status.NOT_ATTEMPTED)
 				rru.setStatus(Status.OK);
 	}
 
 	private void updateTrackingRefs() {
-		for (final RemoteRefUpdate rru : toPush.values()) {
+		for (RemoteRefUpdate rru : toPush.values()) {
 			final Status status = rru.getStatus();
 			if (rru.hasTrackingRefUpdate()
 					&& (status == Status.UP_TO_DATE || status == Status.OK)) {

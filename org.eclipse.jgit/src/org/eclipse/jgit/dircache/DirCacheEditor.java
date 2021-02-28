@@ -1,45 +1,12 @@
 /*
- * Copyright (C) 2008-2009, Google Inc.
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, 2009, Google Inc.
+ * Copyright (C) 2008, 2020 Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.dircache;
@@ -60,25 +27,26 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.util.Paths;
 
 /**
- * Updates a {@link DirCache} by supplying discrete edit commands.
+ * Updates a {@link org.eclipse.jgit.dircache.DirCache} by supplying discrete
+ * edit commands.
  * <p>
- * An editor updates a DirCache by taking a list of {@link PathEdit} commands
- * and executing them against the entries of the destination cache to produce a
- * new cache. This edit style allows applications to insert a few commands and
- * then have the editor compute the proper entry indexes necessary to perform an
+ * An editor updates a DirCache by taking a list of
+ * {@link org.eclipse.jgit.dircache.DirCacheEditor.PathEdit} commands and
+ * executing them against the entries of the destination cache to produce a new
+ * cache. This edit style allows applications to insert a few commands and then
+ * have the editor compute the proper entry indexes necessary to perform an
  * efficient in-order update of the index records. This can be easier to use
- * than {@link DirCacheBuilder}.
+ * than {@link org.eclipse.jgit.dircache.DirCacheBuilder}.
  * <p>
  *
  * @see DirCacheBuilder
  */
 public class DirCacheEditor extends BaseDirCacheEditor {
-	private static final Comparator<PathEdit> EDIT_CMP = new Comparator<PathEdit>() {
-		public int compare(final PathEdit o1, final PathEdit o2) {
-			final byte[] a = o1.path;
-			final byte[] b = o2.path;
-			return cmp(a, a.length, b, b.length);
-		}
+	private static final Comparator<PathEdit> EDIT_CMP = (PathEdit o1,
+			PathEdit o2) -> {
+		final byte[] a = o1.path;
+		final byte[] b = o2.path;
+		return cmp(a, a.length, b, b.length);
 	};
 
 	private final List<PathEdit> edits;
@@ -93,9 +61,9 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 	 *            estimated number of entries the editor will have upon
 	 *            completion. This sizes the initial entry table.
 	 */
-	protected DirCacheEditor(final DirCache dc, final int ecnt) {
+	protected DirCacheEditor(DirCache dc, int ecnt) {
 		super(dc, ecnt);
-		edits = new ArrayList<PathEdit>();
+		edits = new ArrayList<>();
 	}
 
 	/**
@@ -108,10 +76,11 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 	 * @param edit
 	 *            another edit command.
 	 */
-	public void add(final PathEdit edit) {
+	public void add(PathEdit edit) {
 		edits.add(edit);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public boolean commit() throws IOException {
 		if (edits.isEmpty()) {
@@ -123,6 +92,8 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 		return super.commit();
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void finish() {
 		if (!edits.isEmpty()) {
 			applyEdits();
@@ -168,10 +139,28 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 					: eIdx;
 				fastAdd(ent);
 			} else {
-				// Apply to all entries of the current path (different stages)
 				lastIdx = cache.nextEntry(eIdx);
-				for (int i = eIdx; i < lastIdx; i++) {
-					final DirCacheEntry ent = cache.getEntry(i);
+				if (lastIdx > eIdx + 1) {
+					// Apply to all entries of the current path (different
+					// stages). If any apply() resets the stage to STAGE_0, take
+					// only that entry and omit all others.
+					DirCacheEntry[] tmp = new DirCacheEntry[lastIdx - eIdx];
+					int n = 0;
+					for (int i = eIdx; i < lastIdx; i++) {
+						DirCacheEntry ent = cache.getEntry(i);
+						e.apply(ent);
+						if (ent.getStage() == DirCacheEntry.STAGE_0) {
+							fastAdd(ent);
+							n = 0;
+							break;
+						}
+						tmp[n++] = ent;
+					}
+					for (int i = 0; i < n; i++) {
+						fastAdd(tmp[i]);
+					}
+				} else {
+					DirCacheEntry ent = cache.getEntry(eIdx);
 					e.apply(ent);
 					fastAdd(ent);
 				}
@@ -286,7 +275,9 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 	 * {@link #apply(DirCacheEntry)} method. The editor will invoke apply once
 	 * for each record in the index which matches the path name. If there are
 	 * multiple records (for example in stages 1, 2 and 3), the edit instance
-	 * will be called multiple times, once for each stage.
+	 * will be called multiple times, once for each stage. If any of these calls
+	 * resets the stage to 0, only this entry will be taken and entries for
+	 * other stages are discarded.
 	 */
 	public abstract static class PathEdit {
 		final byte[] path;
@@ -298,7 +289,7 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 		 * @param entryPath
 		 *            path of the file within the repository.
 		 */
-		public PathEdit(final String entryPath) {
+		public PathEdit(String entryPath) {
 			path = Constants.encode(entryPath);
 		}
 
@@ -313,7 +304,7 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 		 *            entry instance to match path of. Only the path of this
 		 *            entry is actually considered during command evaluation.
 		 */
-		public PathEdit(final DirCacheEntry ent) {
+		public PathEdit(DirCacheEntry ent) {
 			path = ent.path;
 		}
 
@@ -368,7 +359,7 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 		 * @param entryPath
 		 *            path of the file within the repository.
 		 */
-		public DeletePath(final String entryPath) {
+		public DeletePath(String entryPath) {
 			super(entryPath);
 		}
 
@@ -379,11 +370,12 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 		 *            entry instance to remove. Only the path of this entry is
 		 *            actually considered during command evaluation.
 		 */
-		public DeletePath(final DirCacheEntry ent) {
+		public DeletePath(DirCacheEntry ent) {
 			super(ent);
 		}
 
-		public void apply(final DirCacheEntry ent) {
+		@Override
+		public void apply(DirCacheEntry ent) {
 			throw new UnsupportedOperationException(JGitText.get().noApplyInDelete);
 		}
 	}
@@ -432,7 +424,8 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 			return path;
 		}
 
-		public void apply(final DirCacheEntry ent) {
+		@Override
+		public void apply(DirCacheEntry ent) {
 			throw new UnsupportedOperationException(JGitText.get().noApplyInDelete);
 		}
 	}

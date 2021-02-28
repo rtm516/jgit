@@ -1,49 +1,18 @@
 /*
- * Copyright (C) 2011, GitHub Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2011, 2019 GitHub Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 
@@ -136,7 +105,7 @@ public class BlameCommandTest extends RepositoryTestCase {
 		testRename("subdir/file1.txt", "otherdir/file1.txt");
 	}
 
-	private void testRename(final String sourcePath, final String destPath)
+	private void testRename(String sourcePath, String destPath)
 			throws Exception {
 		try (Git git = new Git(db)) {
 			String[] content1 = new String[] { "a", "b", "c" };
@@ -461,6 +430,39 @@ public class BlameCommandTest extends RepositoryTestCase {
 	}
 
 	@Test
+	public void testUnresolvedMergeConflict() throws Exception {
+		try (Git git = new Git(db)) {
+			RevCommit base = commitFile("file.txt", "Origin\n", "master");
+
+			RevCommit master = commitFile("file.txt",
+					"Change on master branch\n", "master");
+
+			git.checkout().setName("side").setCreateBranch(true)
+					.setStartPoint(base).call();
+			RevCommit side = commitFile("file.txt",
+					"Conflicting change on side\n", "side");
+
+			checkoutBranch("refs/heads/master");
+			MergeResult result = git.merge().include(side).call();
+
+			// The merge results in a conflict, which we do not resolve
+			assertTrue("Expected a conflict",
+					result.getConflicts().containsKey("file.txt"));
+
+			BlameCommand command = new BlameCommand(db);
+			command.setFilePath("file.txt");
+			BlameResult lines = command.call();
+
+			assertEquals(5, lines.getResultContents().size());
+			assertNull(lines.getSourceCommit(0));
+			assertEquals(master, lines.getSourceCommit(1));
+			assertNull(lines.getSourceCommit(2));
+			assertEquals(side, lines.getSourceCommit(3));
+			assertNull(lines.getSourceCommit(4));
+		}
+	}
+
+	@Test
 	public void testWhitespaceMerge() throws Exception {
 		try (Git git = new Git(db)) {
 			RevCommit base = commitFile("file.txt", join("0", "1", "2"), "master");
@@ -489,4 +491,73 @@ public class BlameCommandTest extends RepositoryTestCase {
 			assertEquals(side, lines.getSourceCommit(2));
 		}
 	}
+
+	@Test
+	public void testBlameWithNulByteInHistory() throws Exception {
+		try (Git git = new Git(db)) {
+			String[] content1 = { "First line", "Another line" };
+			writeTrashFile("file.txt", join(content1));
+			git.add().addFilepattern("file.txt").call();
+			RevCommit c1 = git.commit().setMessage("create file").call();
+
+			String[] content2 = { "First line", "Second line with NUL >\000<",
+					"Another line" };
+			assertTrue("Content should contain a NUL byte",
+					content2[1].indexOf(0) > 0);
+			writeTrashFile("file.txt", join(content2));
+			git.add().addFilepattern("file.txt").call();
+			git.commit().setMessage("add line with NUL").call();
+
+			String[] content3 = { "First line", "Second line with NUL >\000<",
+					"Third line" };
+			writeTrashFile("file.txt", join(content3));
+			git.add().addFilepattern("file.txt").call();
+			RevCommit c3 = git.commit().setMessage("change third line").call();
+
+			String[] content4 = { "First line", "Second line with NUL >\\000<",
+					"Third line" };
+			assertTrue("Content should not contain a NUL byte",
+					content4[1].indexOf(0) < 0);
+			writeTrashFile("file.txt", join(content4));
+			git.add().addFilepattern("file.txt").call();
+			RevCommit c4 = git.commit().setMessage("fix NUL line").call();
+
+			BlameResult lines = git.blame().setFilePath("file.txt").call();
+			assertEquals(3, lines.getResultContents().size());
+			assertEquals(c1, lines.getSourceCommit(0));
+			assertEquals(c4, lines.getSourceCommit(1));
+			assertEquals(c3, lines.getSourceCommit(2));
+		}
+	}
+
+	@Test
+	public void testBlameWithNulByteInTopRevision() throws Exception {
+		try (Git git = new Git(db)) {
+			String[] content1 = { "First line", "Another line" };
+			writeTrashFile("file.txt", join(content1));
+			git.add().addFilepattern("file.txt").call();
+			RevCommit c1 = git.commit().setMessage("create file").call();
+
+			String[] content2 = { "First line", "Second line with NUL >\000<",
+					"Another line" };
+			assertTrue("Content should contain a NUL byte",
+					content2[1].indexOf(0) > 0);
+			writeTrashFile("file.txt", join(content2));
+			git.add().addFilepattern("file.txt").call();
+			RevCommit c2 = git.commit().setMessage("add line with NUL").call();
+
+			String[] content3 = { "First line", "Second line with NUL >\000<",
+					"Third line" };
+			writeTrashFile("file.txt", join(content3));
+			git.add().addFilepattern("file.txt").call();
+			RevCommit c3 = git.commit().setMessage("change third line").call();
+
+			BlameResult lines = git.blame().setFilePath("file.txt").call();
+			assertEquals(3, lines.getResultContents().size());
+			assertEquals(c1, lines.getSourceCommit(0));
+			assertEquals(c2, lines.getSourceCommit(1));
+			assertEquals(c3, lines.getSourceCommit(2));
+		}
+	}
+
 }

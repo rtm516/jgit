@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lfs.lib;
@@ -48,14 +15,11 @@ import java.text.MessageFormat;
 
 import org.eclipse.jgit.lfs.errors.InvalidLongObjectIdException;
 import org.eclipse.jgit.lfs.internal.LfsText;
-import org.eclipse.jgit.lib.AbbreviatedObjectId;
-import org.eclipse.jgit.lib.AnyObjectId;
-import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.util.NB;
 import org.eclipse.jgit.util.RawParseUtils;
 
 /**
- * A prefix abbreviation of an {@link LongObjectId}.
+ * A prefix abbreviation of an {@link org.eclipse.jgit.lfs.lib.LongObjectId}.
  * <p>
  * Enable abbreviating SHA-256 strings used by Git LFS, using sufficient leading
  * digits from the LongObjectId name to still be unique within the repository
@@ -65,7 +29,7 @@ import org.eclipse.jgit.util.RawParseUtils;
  * This class converts the hex string into a binary form, to make it more
  * efficient for matching against an object.
  *
- * Ported to SHA-256 from {@link AbbreviatedObjectId}
+ * Ported to SHA-256 from {@link org.eclipse.jgit.lib.AbbreviatedObjectId}
  *
  * @since 4.3
  */
@@ -81,7 +45,7 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	 *            the string to test.
 	 * @return true if the string can converted into an AbbreviatedObjectId.
 	 */
-	public static final boolean isId(final String id) {
+	public static final boolean isId(String id) {
 		if (id.length() < 2
 				|| Constants.LONG_OBJECT_ID_STRING_LENGTH < id.length())
 			return false;
@@ -117,13 +81,14 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	}
 
 	/**
-	 * Convert an AbbreviatedObjectId from an {@link AnyObjectId}.
+	 * Convert an AbbreviatedObjectId from an
+	 * {@link org.eclipse.jgit.lib.AnyObjectId}.
 	 * <p>
 	 * This method copies over all bits of the Id, and is therefore complete
 	 * (see {@link #isComplete()}).
 	 *
 	 * @param id
-	 *            the {@link ObjectId} to convert from.
+	 *            the {@link org.eclipse.jgit.lib.ObjectId} to convert from.
 	 * @return the converted object id.
 	 */
 	public static final AbbreviatedLongObjectId fromLongObjectId(
@@ -140,7 +105,7 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	 *            the string to read from. Must be &lt;= 64 characters.
 	 * @return the converted object id.
 	 */
-	public static final AbbreviatedLongObjectId fromString(final String str) {
+	public static final AbbreviatedLongObjectId fromString(String str) {
 		if (str.length() > Constants.LONG_OBJECT_ID_STRING_LENGTH)
 			throw new IllegalArgumentException(
 					MessageFormat.format(LfsText.get().invalidLongId, str));
@@ -156,8 +121,11 @@ public final class AbbreviatedLongObjectId implements Serializable {
 			final long c = hexUInt64(bs, ptr + 32, end);
 			final long d = hexUInt64(bs, ptr + 48, end);
 			return new AbbreviatedLongObjectId(end - ptr, a, b, c, d);
-		} catch (ArrayIndexOutOfBoundsException e1) {
-			throw new InvalidLongObjectIdException(bs, ptr, end - ptr);
+		} catch (ArrayIndexOutOfBoundsException e) {
+			InvalidLongObjectIdException e1 = new InvalidLongObjectIdException(
+					bs, ptr, end - ptr);
+			e1.initCause(e);
+			throw e1;
 		}
 	}
 
@@ -172,10 +140,10 @@ public final class AbbreviatedLongObjectId implements Serializable {
 			r |= RawParseUtils.parseHexInt4(bs[p++]);
 			n++;
 		}
-		return r << (16 - n) * 4;
+		return r << ((16 - n) * 4);
 	}
 
-	static long mask(final int nibbles, final long word, final long v) {
+	static long mask(int nibbles, long word, long v) {
 		final long b = (word - 1) * 16;
 		if (b + 16 <= nibbles) {
 			// We have all of the bits required for this word.
@@ -213,17 +181,29 @@ public final class AbbreviatedLongObjectId implements Serializable {
 		w4 = new_4;
 	}
 
-	/** @return number of hex digits appearing in this id */
+	/**
+	 * Get length
+	 *
+	 * @return number of hex digits appearing in this id.
+	 */
 	public int length() {
 		return nibbles;
 	}
 
-	/** @return true if this ObjectId is actually a complete id. */
+	/**
+	 * Check if this id is complete
+	 *
+	 * @return true if this ObjectId is actually a complete id.
+	 */
 	public boolean isComplete() {
 		return length() == Constants.LONG_OBJECT_ID_STRING_LENGTH;
 	}
 
-	/** @return a complete ObjectId; null if {@link #isComplete()} is false */
+	/**
+	 * Convert to LongObjectId
+	 *
+	 * @return a complete ObjectId; null if {@link #isComplete()} is false.
+	 */
 	public LongObjectId toLongObjectId() {
 		return isComplete() ? new LongObjectId(w1, w2, w3, w4) : null;
 	}
@@ -239,7 +219,7 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	 *         &gt;0 if this abbreviation names an object that is after
 	 *         <code>other</code>.
 	 */
-	public final int prefixCompare(final AnyLongObjectId other) {
+	public final int prefixCompare(AnyLongObjectId other) {
 		int cmp;
 
 		cmp = NB.compareUInt64(w1, mask(1, other.w1));
@@ -271,7 +251,7 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	 *         &gt;0 if this abbreviation names an object that is after
 	 *         <code>other</code>.
 	 */
-	public final int prefixCompare(final byte[] bs, final int p) {
+	public final int prefixCompare(byte[] bs, int p) {
 		int cmp;
 
 		cmp = NB.compareUInt64(w1, mask(1, NB.decodeInt64(bs, p)));
@@ -303,7 +283,7 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	 *         &gt;0 if this abbreviation names an object that is after
 	 *         <code>other</code>.
 	 */
-	public final int prefixCompare(final long[] bs, final int p) {
+	public final int prefixCompare(long[] bs, int p) {
 		int cmp;
 
 		cmp = NB.compareUInt64(w1, mask(1, bs[p]));
@@ -321,22 +301,28 @@ public final class AbbreviatedLongObjectId implements Serializable {
 		return NB.compareUInt64(w4, mask(4, bs[p + 3]));
 	}
 
-	/** @return value for a fan-out style map, only valid of length &gt;= 2. */
+	/**
+	 * Get the first byte of this id
+	 *
+	 * @return value for a fan-out style map, only valid of length &gt;= 2.
+	 */
 	public final int getFirstByte() {
 		return (int) (w1 >>> 56);
 	}
 
-	private long mask(final long word, final long v) {
+	private long mask(long word, long v) {
 		return mask(nibbles, word, v);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public int hashCode() {
 		return (int) (w1 >> 32);
 	}
 
+	/** {@inheritDoc} */
 	@Override
-	public boolean equals(final Object o) {
+	public boolean equals(Object o) {
 		if (o instanceof AbbreviatedLongObjectId) {
 			final AbbreviatedLongObjectId b = (AbbreviatedLongObjectId) o;
 			return nibbles == b.nibbles && w1 == b.w1 && w2 == b.w2
@@ -346,6 +332,8 @@ public final class AbbreviatedLongObjectId implements Serializable {
 	}
 
 	/**
+	 * <p>name.</p>
+	 *
 	 * @return string form of the abbreviation, in lower case hexadecimal.
 	 */
 	public final String name() {
@@ -367,6 +355,7 @@ public final class AbbreviatedLongObjectId implements Serializable {
 		return new String(b, 0, nibbles);
 	}
 
+	/** {@inheritDoc} */
 	@SuppressWarnings("nls")
 	@Override
 	public String toString() {

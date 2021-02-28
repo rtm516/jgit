@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.transport;
@@ -52,6 +19,7 @@ import java.security.GeneralSecurityException;
 import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.KeySpec;
 import java.text.MessageFormat;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,10 +33,10 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import javax.xml.bind.DatatypeConverter;
 
 import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.util.Base64;
+import org.eclipse.jgit.util.Hex;
 
 abstract class WalkEncryption {
 	static final WalkEncryption NONE = new NoEncryption();
@@ -94,6 +62,20 @@ abstract class WalkEncryption {
 	// consider permitting mixed ciphers to facilitate algorithm migration
 	// i.e. user keeps the password, but changes the algorithm
 	// then existing remote entries will still be readable
+	/**
+	 * Validate
+	 *
+	 * @param u
+	 *            a {@link java.net.HttpURLConnection} object.
+	 * @param prefix
+	 *            a {@link java.lang.String} object.
+	 * @param version
+	 *            a {@link java.lang.String} object.
+	 * @param name
+	 *            a {@link java.lang.String} object.
+	 * @throws java.io.IOException
+	 *             if any.
+	 */
 	protected void validateImpl(final HttpURLConnection u, final String prefix,
 			final String version, final String name) throws IOException {
 		String v;
@@ -113,11 +95,10 @@ abstract class WalkEncryption {
 			throw new IOException(MessageFormat.format(JGitText.get().unsupportedEncryptionAlgorithm, v));
 	}
 
-	IOException error(final Throwable why) {
-		final IOException e;
-		e = new IOException(MessageFormat.format(JGitText.get().encryptionError, why.getMessage()));
-		e.initCause(why);
-		return e;
+	IOException error(Throwable why) {
+		return new IOException(MessageFormat
+				.format(JGitText.get().encryptionError,
+				why.getMessage()), why);
 	}
 
 	private static class NoEncryption extends WalkEncryption {
@@ -127,7 +108,7 @@ abstract class WalkEncryption {
 		}
 
 		@Override
-		void validate(final HttpURLConnection u, final String prefix)
+		void validate(HttpURLConnection u, String prefix)
 				throws IOException {
 			validateImpl(u, prefix, "", ""); //$NON-NLS-1$ //$NON-NLS-2$
 		}
@@ -192,7 +173,7 @@ abstract class WalkEncryption {
 
 			// Standard names are not case-sensitive.
 			// http://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html
-			String cryptoName = cryptoAlg.toUpperCase();
+			String cryptoName = cryptoAlg.toUpperCase(Locale.ROOT);
 
 			if (!cryptoName.startsWith("PBE")) //$NON-NLS-1$
 				throw new GeneralSecurityException(JGitText.get().encryptionOnlyPBE);
@@ -226,19 +207,19 @@ abstract class WalkEncryption {
 		}
 
 		@Override
-		void request(final HttpURLConnection u, final String prefix) {
+		void request(HttpURLConnection u, String prefix) {
 			u.setRequestProperty(prefix + JETS3T_CRYPTO_VER, CRYPTO_VER);
 			u.setRequestProperty(prefix + JETS3T_CRYPTO_ALG, cryptoAlg);
 		}
 
 		@Override
-		void validate(final HttpURLConnection u, final String prefix)
+		void validate(HttpURLConnection u, String prefix)
 				throws IOException {
 			validateImpl(u, prefix, CRYPTO_VER, cryptoAlg);
 		}
 
 		@Override
-		OutputStream encrypt(final OutputStream os) throws IOException {
+		OutputStream encrypt(OutputStream os) throws IOException {
 			try {
 				final Cipher cipher = InsecureCipherFactory.create(cryptoAlg);
 				cipher.init(Cipher.ENCRYPT_MODE, secretKey, paramSpec);
@@ -249,7 +230,7 @@ abstract class WalkEncryption {
 		}
 
 		@Override
-		InputStream decrypt(final InputStream in) throws IOException {
+		InputStream decrypt(InputStream in) throws IOException {
 			try {
 				final Cipher cipher = InsecureCipherFactory.create(cryptoAlg);
 				cipher.init(Cipher.DECRYPT_MODE, secretKey, paramSpec);
@@ -287,7 +268,7 @@ abstract class WalkEncryption {
 		String DEFAULT_KEY_ALGO = JetS3tV2.ALGORITHM;
 		String DEFAULT_KEY_SIZE = Integer.toString(JetS3tV2.KEY_SIZE);
 		String DEFAULT_KEY_ITER = Integer.toString(JetS3tV2.ITERATIONS);
-		String DEFAULT_KEY_SALT = DatatypeConverter.printHexBinary(JetS3tV2.SALT);
+		String DEFAULT_KEY_SALT = Hex.toHexString(JetS3tV2.SALT);
 
 		String EMPTY = ""; //$NON-NLS-1$
 
@@ -301,16 +282,19 @@ abstract class WalkEncryption {
 		String REGEX_TRANS = "(.+)/(.+)/(.+)"; //$NON-NLS-1$
 	}
 
-	static GeneralSecurityException securityError(String message) {
-		return new GeneralSecurityException(
+	static GeneralSecurityException securityError(String message,
+			Throwable cause) {
+		GeneralSecurityException e = new GeneralSecurityException(
 				MessageFormat.format(JGitText.get().encryptionError, message));
+		e.initCause(cause);
+		return e;
 	}
 
 	/**
 	 * Base implementation of JGit symmetric encryption. Supports V2 properties
 	 * format.
 	 */
-	static abstract class SymmetricEncryption extends WalkEncryption
+	abstract static class SymmetricEncryption extends WalkEncryption
 			implements Keys, Vals {
 
 		/** Encryption profile, root name of group of related properties. */
@@ -351,29 +335,28 @@ abstract class WalkEncryption {
 			try {
 				size = Integer.parseInt(keySize);
 			} catch (Exception e) {
-				throw securityError(X_KEY_SIZE + EMPTY + keySize);
+				throw securityError(X_KEY_SIZE + EMPTY + keySize, e);
 			}
 
 			final int iter;
 			try {
 				iter = Integer.parseInt(keyIter);
 			} catch (Exception e) {
-				throw securityError(X_KEY_ITER + EMPTY + keyIter);
+				throw securityError(X_KEY_ITER + EMPTY + keyIter, e);
 			}
 
 			final byte[] salt;
 			try {
-				salt = DatatypeConverter
-						.parseHexBinary(keySalt.replaceAll(REGEX_WS, EMPTY));
+				salt = Hex.decode(keySalt.replaceAll(REGEX_WS, EMPTY));
 			} catch (Exception e) {
-				throw securityError(X_KEY_SALT + EMPTY + keySalt);
+				throw securityError(X_KEY_SALT + EMPTY + keySalt, e);
 			}
 
 			KeySpec keySpec = new PBEKeySpec(pass.toCharArray(), salt, iter, size);
 
 			SecretKey keyBase = factory.generateSecret(keySpec);
 
-			String name = cipherAlgo.toUpperCase();
+			String name = cipherAlgo.toUpperCase(Locale.ROOT);
 			Matcher matcherPBE = Pattern.compile(REGEX_PBE).matcher(name);
 			Matcher matcherTrans = Pattern.compile(REGEX_TRANS).matcher(name);
 			if (matcherPBE.matches()) {
@@ -506,7 +489,7 @@ abstract class WalkEncryption {
 		JGitV1(String algo, String pass)
 				throws GeneralSecurityException {
 			super(wrap(algo, pass));
-			String name = cipherAlgo.toUpperCase();
+			String name = cipherAlgo.toUpperCase(Locale.ROOT);
 			Matcher matcherPBE = Pattern.compile(REGEX_PBE).matcher(name);
 			if (!matcherPBE.matches())
 				throw new GeneralSecurityException(

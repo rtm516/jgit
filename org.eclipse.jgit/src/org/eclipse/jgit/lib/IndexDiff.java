@@ -3,51 +3,22 @@
  * Copyright (C) 2007-2008, Robin Rosenberg <robin.rosenberg@dewire.com>
  * Copyright (C) 2010, Jens Baumgart <jens.baumgart@sap.com>
  * Copyright (C) 2013, Robin Stocker <robin@nibor.org>
- * Copyright (C) 2014, Axel Richard <axel.richard@obeo.fr>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2014, Axel Richard <axel.richard@obeo.fr> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lib;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.DirectoryIteratorException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -104,7 +75,7 @@ public class IndexDiff {
 	 * @see IndexDiff#getConflictingStageStates()
 	 * @since 3.0
 	 */
-	public static enum StageState {
+	public enum StageState {
 		/**
 		 * Exists in base, but neither in ours nor in theirs.
 		 */
@@ -239,11 +210,11 @@ public class IndexDiff {
 		}
 	}
 
-	private final static int TREE = 0;
+	private static final int TREE = 0;
 
-	private final static int INDEX = 1;
+	private static final int INDEX = 1;
 
-	private final static int WORKDIR = 2;
+	private static final int WORKDIR = 2;
 
 	private final Repository repository;
 
@@ -253,19 +224,21 @@ public class IndexDiff {
 
 	private final WorkingTreeIterator initialWorkingTreeIterator;
 
-	private Set<String> added = new HashSet<String>();
+	private Set<String> added = new HashSet<>();
 
-	private Set<String> changed = new HashSet<String>();
+	private Set<String> changed = new HashSet<>();
 
-	private Set<String> removed = new HashSet<String>();
+	private Set<String> removed = new HashSet<>();
 
-	private Set<String> missing = new HashSet<String>();
+	private Set<String> missing = new HashSet<>();
 
-	private Set<String> modified = new HashSet<String>();
+	private Set<String> missingSubmodules = new HashSet<>();
 
-	private Set<String> untracked = new HashSet<String>();
+	private Set<String> modified = new HashSet<>();
 
-	private Map<String, StageState> conflicts = new HashMap<String, StageState>();
+	private Set<String> untracked = new HashSet<>();
+
+	private Map<String, StageState> conflicts = new HashMap<>();
 
 	private Set<String> ignored;
 
@@ -275,22 +248,23 @@ public class IndexDiff {
 
 	private IndexDiffFilter indexDiffFilter;
 
-	private Map<String, IndexDiff> submoduleIndexDiffs = new HashMap<String, IndexDiff>();
+	private Map<String, IndexDiff> submoduleIndexDiffs = new HashMap<>();
 
 	private IgnoreSubmoduleMode ignoreSubmoduleMode = null;
 
-	private Map<FileMode, Set<String>> fileModes = new HashMap<FileMode, Set<String>>();
+	private Map<FileMode, Set<String>> fileModes = new HashMap<>();
 
 	/**
 	 * Construct an IndexDiff
 	 *
 	 * @param repository
+	 *            a {@link org.eclipse.jgit.lib.Repository} object.
 	 * @param revstr
-	 *            symbolic name e.g. HEAD
-	 *            An EmptyTreeIterator is used if <code>revstr</code> cannot be resolved.
+	 *            symbolic name e.g. HEAD An EmptyTreeIterator is used if
+	 *            <code>revstr</code> cannot be resolved.
 	 * @param workingTreeIterator
 	 *            iterator for working directory
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 */
 	public IndexDiff(Repository repository, String revstr,
 			WorkingTreeIterator workingTreeIterator) throws IOException {
@@ -301,11 +275,12 @@ public class IndexDiff {
 	 * Construct an Indexdiff
 	 *
 	 * @param repository
+	 *            a {@link org.eclipse.jgit.lib.Repository} object.
 	 * @param objectId
 	 *            tree id. If null, an EmptyTreeIterator is used.
 	 * @param workingTreeIterator
 	 *            iterator for working directory
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 */
 	public IndexDiff(Repository repository, ObjectId objectId,
 			WorkingTreeIterator workingTreeIterator) throws IOException {
@@ -321,6 +296,8 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Defines how modifications in submodules are treated
+	 *
 	 * @param mode
 	 *            defines how modifications in submodules are treated
 	 * @since 3.6
@@ -336,16 +313,13 @@ public class IndexDiff {
 	public interface WorkingTreeIteratorFactory {
 		/**
 		 * @param repo
-		 * @return a WorkingTreeIterator for repo
+		 *            the repository
+		 * @return working tree iterator
 		 */
 		public WorkingTreeIterator getWorkingTreeIterator(Repository repo);
 	}
 
-	private WorkingTreeIteratorFactory wTreeIt = new WorkingTreeIteratorFactory() {
-		public WorkingTreeIterator getWorkingTreeIterator(Repository repo) {
-			return new FileTreeIterator(repo);
-		}
-	};
+	private WorkingTreeIteratorFactory wTreeIt = FileTreeIterator::new;
 
 	/**
 	 * Allows higher layers to set the factory for WorkingTreeIterators.
@@ -362,6 +336,7 @@ public class IndexDiff {
 	 * files.
 	 *
 	 * @param filter
+	 *            a {@link org.eclipse.jgit.treewalk.filter.TreeFilter} object.
 	 */
 	public void setFilter(TreeFilter filter) {
 		this.filter = filter;
@@ -373,10 +348,35 @@ public class IndexDiff {
 	 * monitor is required.
 	 *
 	 * @return if anything is different between index, tree, and workdir
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 */
 	public boolean diff() throws IOException {
-		return diff(null, 0, 0, ""); //$NON-NLS-1$
+		return diff(null);
+	}
+
+	/**
+	 * Run the diff operation. Until this is called, all lists will be empty.
+	 * Use
+	 * {@link #diff(ProgressMonitor, int, int, String, RepositoryBuilderFactory)}
+	 * if a progress monitor is required.
+	 * <p>
+	 * The operation may create repositories for submodules using builders
+	 * provided by the given {@code factory}, if any, and will also close these
+	 * submodule repositories again.
+	 * </p>
+	 *
+	 * @param factory
+	 *            the {@link RepositoryBuilderFactory} to use to create builders
+	 *            to create submodule repositories, if needed; if {@code null},
+	 *            submodule repositories will be built using a plain
+	 *            {@link RepositoryBuilder}.
+	 * @return if anything is different between index, tree, and workdir
+	 * @throws java.io.IOException
+	 * @since 5.6
+	 */
+	public boolean diff(RepositoryBuilderFactory factory)
+			throws IOException {
+		return diff(null, 0, 0, "", factory); //$NON-NLS-1$
 	}
 
 	/**
@@ -395,13 +395,51 @@ public class IndexDiff {
 	 *            number or estimated files in the working tree
 	 * @param estIndexSize
 	 *            number of estimated entries in the cache
-	 * @param title
-	 *
+	 * @param title a {@link java.lang.String} object.
 	 * @return if anything is different between index, tree, and workdir
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 */
 	public boolean diff(final ProgressMonitor monitor, int estWorkTreeSize,
 			int estIndexSize, final String title)
+			throws IOException {
+		return diff(monitor, estWorkTreeSize, estIndexSize, title, null);
+	}
+
+	/**
+	 * Run the diff operation. Until this is called, all lists will be empty.
+	 * <p>
+	 * The operation may be aborted by the progress monitor. In that event it
+	 * will report what was found before the cancel operation was detected.
+	 * Callers should ignore the result if monitor.isCancelled() is true. If a
+	 * progress monitor is not needed, callers should use {@link #diff()}
+	 * instead. Progress reporting is crude and approximate and only intended
+	 * for informing the user.
+	 * </p>
+	 * <p>
+	 * The operation may create repositories for submodules using builders
+	 * provided by the given {@code factory}, if any, and will also close these
+	 * submodule repositories again.
+	 * </p>
+	 *
+	 * @param monitor
+	 *            for reporting progress, may be null
+	 * @param estWorkTreeSize
+	 *            number or estimated files in the working tree
+	 * @param estIndexSize
+	 *            number of estimated entries in the cache
+	 * @param title
+	 *            a {@link java.lang.String} object.
+	 * @param factory
+	 *            the {@link RepositoryBuilderFactory} to use to create builders
+	 *            to create submodule repositories, if needed; if {@code null},
+	 *            submodule repositories will be built using a plain
+	 *            {@link RepositoryBuilder}.
+	 * @return if anything is different between index, tree, and workdir
+	 * @throws java.io.IOException
+	 * @since 5.6
+	 */
+	public boolean diff(ProgressMonitor monitor, int estWorkTreeSize,
+			int estIndexSize, String title, RepositoryBuilderFactory factory)
 			throws IOException {
 		dirCache = repository.readDirCache();
 
@@ -416,7 +454,7 @@ public class IndexDiff {
 			treeWalk.addTree(new DirCacheIterator(dirCache));
 			treeWalk.addTree(initialWorkingTreeIterator);
 			initialWorkingTreeIterator.setDirCacheIterator(treeWalk, 1);
-			Collection<TreeFilter> filters = new ArrayList<TreeFilter>(4);
+			Collection<TreeFilter> filters = new ArrayList<>(4);
 
 			if (monitor != null) {
 				// Get the maximum size of the work tree and index
@@ -495,9 +533,15 @@ public class IndexDiff {
 				if (dirCacheIterator != null) {
 					if (workingTreeIterator == null) {
 						// in index, not in workdir => missing
-						if (!isEntryGitLink(dirCacheIterator)
-								|| ignoreSubmoduleMode != IgnoreSubmoduleMode.ALL)
-							missing.add(treeWalk.getPathString());
+						boolean isGitLink = isEntryGitLink(dirCacheIterator);
+						if (!isGitLink
+								|| ignoreSubmoduleMode != IgnoreSubmoduleMode.ALL) {
+							String path = treeWalk.getPathString();
+							missing.add(path);
+							if (isGitLink) {
+								missingSubmodules.add(path);
+							}
+						}
 					} else {
 						if (workingTreeIterator.isModified(
 								dirCacheIterator.getDirCacheEntry(), true,
@@ -512,67 +556,81 @@ public class IndexDiff {
 					}
 				}
 
-				for (int i = 0; i < treeWalk.getTreeCount(); i++) {
-					Set<String> values = fileModes.get(treeWalk.getFileMode(i));
-					String path = treeWalk.getPathString();
-					if (path != null) {
-						if (values == null)
-							values = new HashSet<String>();
-						values.add(path);
-						fileModes.put(treeWalk.getFileMode(i), values);
+				String path = treeWalk.getPathString();
+				if (path != null) {
+					for (int i = 0; i < treeWalk.getTreeCount(); i++) {
+						recordFileMode(path, treeWalk.getFileMode(i));
 					}
 				}
 			}
 		}
 
 		if (ignoreSubmoduleMode != IgnoreSubmoduleMode.ALL) {
-			IgnoreSubmoduleMode localIgnoreSubmoduleMode = ignoreSubmoduleMode;
-			SubmoduleWalk smw = SubmoduleWalk.forIndex(repository);
-			while (smw.next()) {
-				try {
-					if (localIgnoreSubmoduleMode == null)
-						localIgnoreSubmoduleMode = smw.getModulesIgnore();
-					if (IgnoreSubmoduleMode.ALL
-							.equals(localIgnoreSubmoduleMode))
-						continue;
-				} catch (ConfigInvalidException e) {
-					IOException e1 = new IOException(MessageFormat.format(
-							JGitText.get().invalidIgnoreParamSubmodule,
-							smw.getPath()));
-					e1.initCause(e);
-					throw e1;
-				}
-				Repository subRepo = smw.getRepository();
-				if (subRepo != null) {
+			try (SubmoduleWalk smw = new SubmoduleWalk(repository)) {
+				smw.setTree(new DirCacheIterator(dirCache));
+				smw.setBuilderFactory(factory);
+				while (smw.next()) {
+					IgnoreSubmoduleMode localIgnoreSubmoduleMode = ignoreSubmoduleMode;
 					try {
-						ObjectId subHead = subRepo.resolve("HEAD"); //$NON-NLS-1$
-						if (subHead != null
-								&& !subHead.equals(smw.getObjectId()))
-							modified.add(smw.getPath());
-						else if (ignoreSubmoduleMode != IgnoreSubmoduleMode.DIRTY) {
-							IndexDiff smid = submoduleIndexDiffs.get(smw
-									.getPath());
-							if (smid == null) {
-								smid = new IndexDiff(subRepo,
-										smw.getObjectId(),
-										wTreeIt.getWorkingTreeIterator(subRepo));
-								submoduleIndexDiffs.put(smw.getPath(), smid);
-							}
-							if (smid.diff()) {
-								if (ignoreSubmoduleMode == IgnoreSubmoduleMode.UNTRACKED
-										&& smid.getAdded().isEmpty()
-										&& smid.getChanged().isEmpty()
-										&& smid.getConflicting().isEmpty()
-										&& smid.getMissing().isEmpty()
-										&& smid.getModified().isEmpty()
-										&& smid.getRemoved().isEmpty()) {
-									continue;
+						if (localIgnoreSubmoduleMode == null)
+							localIgnoreSubmoduleMode = smw.getModulesIgnore();
+						if (IgnoreSubmoduleMode.ALL
+								.equals(localIgnoreSubmoduleMode))
+							continue;
+					} catch (ConfigInvalidException e) {
+						throw new IOException(MessageFormat.format(
+								JGitText.get().invalidIgnoreParamSubmodule,
+								smw.getPath()), e);
+					}
+					try (Repository subRepo = smw.getRepository()) {
+						String subRepoPath = smw.getPath();
+						if (subRepo != null) {
+							ObjectId subHead = subRepo.resolve("HEAD"); //$NON-NLS-1$
+							if (subHead != null
+									&& !subHead.equals(smw.getObjectId())) {
+								modified.add(subRepoPath);
+								recordFileMode(subRepoPath, FileMode.GITLINK);
+							} else if (localIgnoreSubmoduleMode != IgnoreSubmoduleMode.DIRTY) {
+								IndexDiff smid = submoduleIndexDiffs
+										.get(smw.getPath());
+								if (smid == null) {
+									smid = new IndexDiff(subRepo,
+											smw.getObjectId(),
+											wTreeIt.getWorkingTreeIterator(
+													subRepo));
+									submoduleIndexDiffs.put(subRepoPath, smid);
 								}
-								modified.add(smw.getPath());
+								if (smid.diff(factory)) {
+									if (localIgnoreSubmoduleMode == IgnoreSubmoduleMode.UNTRACKED
+											&& smid.getAdded().isEmpty()
+											&& smid.getChanged().isEmpty()
+											&& smid.getConflicting().isEmpty()
+											&& smid.getMissing().isEmpty()
+											&& smid.getModified().isEmpty()
+											&& smid.getRemoved().isEmpty()) {
+										continue;
+									}
+									modified.add(subRepoPath);
+									recordFileMode(subRepoPath,
+											FileMode.GITLINK);
+								}
+							}
+						} else if (missingSubmodules.remove(subRepoPath)) {
+							// If the directory is there and empty but the
+							// submodule repository in .git/modules doesn't
+							// exist yet it isn't "missing".
+							File gitDir = new File(
+									new File(repository.getDirectory(),
+											Constants.MODULES),
+									subRepoPath);
+							if (!gitDir.isDirectory()) {
+								File dir = SubmoduleWalk.getSubmoduleDirectory(
+										repository, subRepoPath);
+								if (dir.isDirectory() && !hasFiles(dir)) {
+									missing.remove(subRepoPath);
+								}
 							}
 						}
-					} finally {
-						subRepo.close();
 					}
 				}
 			}
@@ -580,16 +638,37 @@ public class IndexDiff {
 		}
 
 		// consume the remaining work
-		if (monitor != null)
+		if (monitor != null) {
 			monitor.endTask();
+		}
 
 		ignored = indexDiffFilter.getIgnoredPaths();
 		if (added.isEmpty() && changed.isEmpty() && removed.isEmpty()
 				&& missing.isEmpty() && modified.isEmpty()
-				&& untracked.isEmpty())
+				&& untracked.isEmpty()) {
 			return false;
-		else
-			return true;
+		}
+		return true;
+	}
+
+	private boolean hasFiles(File directory) {
+		try (DirectoryStream<java.nio.file.Path> dir = Files
+				.newDirectoryStream(directory.toPath())) {
+			return dir.iterator().hasNext();
+		} catch (DirectoryIteratorException | IOException e) {
+			return false;
+		}
+	}
+
+	private void recordFileMode(String path, FileMode mode) {
+		Set<String> values = fileModes.get(mode);
+		if (path != null) {
+			if (values == null) {
+				values = new HashSet<>();
+				fileModes.put(mode, values);
+			}
+			values.add(path);
+		}
 	}
 
 	private boolean isEntryGitLink(AbstractTreeIterator ti) {
@@ -600,16 +679,19 @@ public class IndexDiff {
 	private void addConflict(String path, int stage) {
 		StageState existingStageStates = conflicts.get(path);
 		byte stageMask = 0;
-		if (existingStageStates != null)
-			stageMask |= existingStageStates.getStageMask();
+		if (existingStageStates != null) {
+			stageMask |= (byte) existingStageStates.getStageMask();
+		}
 		// stage 1 (base) should be shifted 0 times
 		int shifts = stage - 1;
-		stageMask |= (1 << shifts);
+		stageMask |= (byte) (1 << shifts);
 		StageState stageState = StageState.fromMask(stageMask);
 		conflicts.put(path, stageState);
 	}
 
 	/**
+	 * Get list of files added to the index, not in the tree
+	 *
 	 * @return list of files added to the index, not in the tree
 	 */
 	public Set<String> getAdded() {
@@ -617,6 +699,8 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files changed from tree to index
+	 *
 	 * @return list of files changed from tree to index
 	 */
 	public Set<String> getChanged() {
@@ -624,6 +708,8 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files removed from index, but in tree
+	 *
 	 * @return list of files removed from index, but in tree
 	 */
 	public Set<String> getRemoved() {
@@ -631,6 +717,8 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files in index, but not filesystem
+	 *
 	 * @return list of files in index, but not filesystem
 	 */
 	public Set<String> getMissing() {
@@ -638,6 +726,8 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files modified on disk relative to the index
+	 *
 	 * @return list of files modified on disk relative to the index
 	 */
 	public Set<String> getModified() {
@@ -645,6 +735,8 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files that are not ignored, and not in the index.
+	 *
 	 * @return list of files that are not ignored, and not in the index.
 	 */
 	public Set<String> getUntracked() {
@@ -652,6 +744,9 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files that are in conflict, corresponds to the keys of
+	 * {@link #getConflictingStageStates()}
+	 *
 	 * @return list of files that are in conflict, corresponds to the keys of
 	 *         {@link #getConflictingStageStates()}
 	 */
@@ -660,8 +755,11 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get the map from each path of {@link #getConflicting()} to its
+	 * corresponding {@link org.eclipse.jgit.lib.IndexDiff.StageState}
+	 *
 	 * @return the map from each path of {@link #getConflicting()} to its
-	 *         corresponding {@link StageState}
+	 *         corresponding {@link org.eclipse.jgit.lib.IndexDiff.StageState}
 	 * @since 3.0
 	 */
 	public Map<String, StageState> getConflictingStageStates() {
@@ -682,11 +780,13 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of files with the flag assume-unchanged
+	 *
 	 * @return list of files with the flag assume-unchanged
 	 */
 	public Set<String> getAssumeUnchanged() {
 		if (assumeUnchanged == null) {
-			HashSet<String> unchanged = new HashSet<String>();
+			HashSet<String> unchanged = new HashSet<>();
 			for (int i = 0; i < dirCache.getEntryCount(); i++)
 				if (dirCache.getEntry(i).isAssumeValid())
 					unchanged.add(dirCache.getEntry(i).getPathString());
@@ -696,20 +796,22 @@ public class IndexDiff {
 	}
 
 	/**
+	 * Get list of folders containing only untracked files/folders
+	 *
 	 * @return list of folders containing only untracked files/folders
 	 */
 	public Set<String> getUntrackedFolders() {
 		return ((indexDiffFilter == null) ? Collections.<String> emptySet()
-				: new HashSet<String>(indexDiffFilter.getUntrackedFolders()));
+				: new HashSet<>(indexDiffFilter.getUntrackedFolders()));
 	}
 
 	/**
 	 * Get the file mode of the given path in the index
 	 *
-	 * @param path
+	 * @param path a {@link java.lang.String} object.
 	 * @return file mode
 	 */
-	public FileMode getIndexMode(final String path) {
+	public FileMode getIndexMode(String path) {
 		final DirCacheEntry entry = dirCache.getEntry(path);
 		return entry != null ? entry.getFileMode() : FileMode.MISSING;
 	}
@@ -718,15 +820,15 @@ public class IndexDiff {
 	 * Get the list of paths that IndexDiff has detected to differ and have the
 	 * given file mode
 	 *
-	 * @param mode
+	 * @param mode a {@link org.eclipse.jgit.lib.FileMode} object.
 	 * @return the list of paths that IndexDiff has detected to differ and have
 	 *         the given file mode
 	 * @since 3.6
 	 */
-	public Set<String> getPathsWithIndexMode(final FileMode mode) {
+	public Set<String> getPathsWithIndexMode(FileMode mode) {
 		Set<String> paths = fileModes.get(mode);
 		if (paths == null)
-			paths = new HashSet<String>();
+			paths = new HashSet<>();
 		return paths;
 	}
 }

@@ -2,66 +2,44 @@
  * Copyright (C) 2009, Google Inc.
  * Copyright (C) 2009, Robin Rosenberg <robin.rosenberg@dewire.com>
  * Copyright (C) 2009, Yann Simon <yann.simon.fr@gmail.com>
- * Copyright (C) 2012, Daniel Megert <daniel_megert@ch.ibm.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2012, Daniel Megert <daniel_megert@ch.ibm.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.util;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.eclipse.jgit.errors.ConfigInvalidException;
 import org.eclipse.jgit.errors.CorruptObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Config;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectChecker;
+import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
 import org.eclipse.jgit.util.time.MonotonicClock;
 import org.eclipse.jgit.util.time.MonotonicSystemClock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Interface to read values from the system.
@@ -72,11 +50,15 @@ import org.eclipse.jgit.util.time.MonotonicSystemClock;
  * </p>
  */
 public abstract class SystemReader {
+
+	private static final Logger LOG = LoggerFactory
+			.getLogger(SystemReader.class);
+
 	private static final SystemReader DEFAULT;
 
-	private static Boolean isMacOS;
+	private static volatile Boolean isMacOS;
 
-	private static Boolean isWindows;
+	private static volatile Boolean isWindows;
 
 	static {
 		SystemReader r = new Default();
@@ -87,36 +69,73 @@ public abstract class SystemReader {
 	private static class Default extends SystemReader {
 		private volatile String hostname;
 
+		@Override
 		public String getenv(String variable) {
 			return System.getenv(variable);
 		}
 
+		@Override
 		public String getProperty(String key) {
 			return System.getProperty(key);
 		}
 
+		@Override
 		public FileBasedConfig openSystemConfig(Config parent, FS fs) {
-			File configFile = fs.getGitSystemConfig();
-			if (configFile == null) {
-				return new FileBasedConfig(null, fs) {
-					public void load() {
-						// empty, do not load
-					}
-
-					public boolean isOutdated() {
-						// regular class would bomb here
-						return false;
-					}
-				};
+			if (StringUtils
+					.isEmptyOrNull(getenv(Constants.GIT_CONFIG_NOSYSTEM_KEY))) {
+				File configFile = fs.getGitSystemConfig();
+				if (configFile != null) {
+					return new FileBasedConfig(parent, configFile, fs);
+				}
 			}
-			return new FileBasedConfig(parent, configFile, fs);
+			return new FileBasedConfig(parent, null, fs) {
+				@Override
+				public void load() {
+					// empty, do not load
+				}
+
+				@Override
+				public boolean isOutdated() {
+					// regular class would bomb here
+					return false;
+				}
+			};
 		}
 
+		@Override
 		public FileBasedConfig openUserConfig(Config parent, FS fs) {
-			final File home = fs.userHome();
-			return new FileBasedConfig(parent, new File(home, ".gitconfig"), fs); //$NON-NLS-1$
+			return new FileBasedConfig(parent, new File(fs.userHome(), ".gitconfig"), //$NON-NLS-1$
+					fs);
 		}
 
+		private Path getXDGConfigHome(FS fs) {
+			String configHomePath = getenv(Constants.XDG_CONFIG_HOME);
+			if (StringUtils.isEmptyOrNull(configHomePath)) {
+				configHomePath = new File(fs.userHome(), ".config") //$NON-NLS-1$
+						.getAbsolutePath();
+			}
+			try {
+				return Paths.get(configHomePath);
+			} catch (InvalidPathException e) {
+				LOG.error(JGitText.get().logXDGConfigHomeInvalid,
+						configHomePath, e);
+			}
+			return null;
+		}
+
+		@Override
+		public FileBasedConfig openJGitConfig(Config parent, FS fs) {
+			Path xdgPath = getXDGConfigHome(fs);
+			if (xdgPath != null) {
+				Path configPath = xdgPath.resolve("jgit") //$NON-NLS-1$
+						.resolve(Constants.CONFIG);
+				return new FileBasedConfig(parent, configPath.toFile(), fs);
+			}
+			return new FileBasedConfig(parent,
+					new File(fs.userHome(), ".jgitconfig"), fs); //$NON-NLS-1$
+		}
+
+		@Override
 		public String getHostname() {
 			if (hostname == null) {
 				try {
@@ -142,14 +161,20 @@ public abstract class SystemReader {
 		}
 	}
 
-	private static SystemReader INSTANCE = DEFAULT;
+	private static volatile SystemReader INSTANCE = DEFAULT;
 
-	/** @return the live instance to read system properties. */
+	/**
+	 * Get the current SystemReader instance
+	 *
+	 * @return the current SystemReader instance.
+	 */
 	public static SystemReader getInstance() {
 		return INSTANCE;
 	}
 
 	/**
+	 * Set a new SystemReader instance to use when accessing properties.
+	 *
 	 * @param newReader
 	 *            the new instance to use when accessing properties, or null for
 	 *            the default instance.
@@ -166,6 +191,12 @@ public abstract class SystemReader {
 	}
 
 	private ObjectChecker platformChecker;
+
+	private AtomicReference<FileBasedConfig> systemConfig = new AtomicReference<>();
+
+	private AtomicReference<FileBasedConfig> userConfig = new AtomicReference<>();
+
+	private AtomicReference<FileBasedConfig> jgitConfig = new AtomicReference<>();
 
 	private void init() {
 		// Creating ObjectChecker must be deferred. Unit tests change
@@ -194,18 +225,29 @@ public abstract class SystemReader {
 	public abstract String getHostname();
 
 	/**
-	 * @param variable system variable to read
+	 * Get value of the system variable
+	 *
+	 * @param variable
+	 *            system variable to read
 	 * @return value of the system variable
 	 */
 	public abstract String getenv(String variable);
 
 	/**
-	 * @param key of the system property to read
+	 * Get value of the system property
+	 *
+	 * @param key
+	 *            of the system property to read
 	 * @return value of the system property
 	 */
 	public abstract String getProperty(String key);
 
 	/**
+	 * Open the git configuration found in the user home. Use
+	 * {@link #getUserConfig()} to get the current git configuration in the user
+	 * home since it manages automatic reloading when the gitconfig file was
+	 * modified and avoids unnecessary reloads.
+	 *
 	 * @param parent
 	 *            a config with values not found directly in the returned config
 	 * @param fs
@@ -216,23 +258,150 @@ public abstract class SystemReader {
 	public abstract FileBasedConfig openUserConfig(Config parent, FS fs);
 
 	/**
+	 * Open the gitconfig configuration found in the system-wide "etc"
+	 * directory. Use {@link #getSystemConfig()} to get the current system-wide
+	 * git configuration since it manages automatic reloading when the gitconfig
+	 * file was modified and avoids unnecessary reloads.
+	 *
 	 * @param parent
 	 *            a config with values not found directly in the returned
 	 *            config. Null is a reasonable value here.
 	 * @param fs
 	 *            the file system abstraction which will be necessary to perform
 	 *            certain file system operations.
-	 * @return the gitonfig configuration found in the system-wide "etc"
+	 * @return the gitconfig configuration found in the system-wide "etc"
 	 *         directory
 	 */
 	public abstract FileBasedConfig openSystemConfig(Config parent, FS fs);
 
 	/**
+	 * Open the jgit configuration located at $XDG_CONFIG_HOME/jgit/config. Use
+	 * {@link #getJGitConfig()} to get the current jgit configuration in the
+	 * user home since it manages automatic reloading when the jgit config file
+	 * was modified and avoids unnecessary reloads.
+	 *
+	 * @param parent
+	 *            a config with values not found directly in the returned config
+	 * @param fs
+	 *            the file system abstraction which will be necessary to perform
+	 *            certain file system operations.
+	 * @return the jgit configuration located at $XDG_CONFIG_HOME/jgit/config
+	 * @since 5.5.2
+	 */
+	public abstract FileBasedConfig openJGitConfig(Config parent, FS fs);
+
+	/**
+	 * Get the git configuration found in the user home. The configuration will
+	 * be reloaded automatically if the configuration file was modified. Also
+	 * reloads the system config if the system config file was modified. If the
+	 * configuration file wasn't modified returns the cached configuration.
+	 *
+	 * @return the git configuration found in the user home
+	 * @throws ConfigInvalidException
+	 *             if configuration is invalid
+	 * @throws IOException
+	 *             if something went wrong when reading files
+	 * @since 5.1.9
+	 */
+	public StoredConfig getUserConfig()
+			throws ConfigInvalidException, IOException {
+		FileBasedConfig c = userConfig.get();
+		if (c == null) {
+			userConfig.compareAndSet(null,
+					openUserConfig(getSystemConfig(), FS.DETECTED));
+			c = userConfig.get();
+		}
+		// on the very first call this will check a second time if the system
+		// config is outdated
+		updateAll(c);
+		return c;
+	}
+
+	/**
+	 * Get the jgit configuration located at $XDG_CONFIG_HOME/jgit/config. The
+	 * configuration will be reloaded automatically if the configuration file
+	 * was modified. If the configuration file wasn't modified returns the
+	 * cached configuration.
+	 *
+	 * @return the jgit configuration located at $XDG_CONFIG_HOME/jgit/config
+	 * @throws ConfigInvalidException
+	 *             if configuration is invalid
+	 * @throws IOException
+	 *             if something went wrong when reading files
+	 * @since 5.5.2
+	 */
+	public StoredConfig getJGitConfig()
+			throws ConfigInvalidException, IOException {
+		FileBasedConfig c = jgitConfig.get();
+		if (c == null) {
+			jgitConfig.compareAndSet(null,
+					openJGitConfig(null, FS.DETECTED));
+			c = jgitConfig.get();
+		}
+		updateAll(c);
+		return c;
+	}
+
+	/**
+	 * Get the gitconfig configuration found in the system-wide "etc" directory.
+	 * The configuration will be reloaded automatically if the configuration
+	 * file was modified otherwise returns the cached system level config.
+	 *
+	 * @return the gitconfig configuration found in the system-wide "etc"
+	 *         directory
+	 * @throws ConfigInvalidException
+	 *             if configuration is invalid
+	 * @throws IOException
+	 *             if something went wrong when reading files
+	 * @since 5.1.9
+	 */
+	public StoredConfig getSystemConfig()
+			throws ConfigInvalidException, IOException {
+		FileBasedConfig c = systemConfig.get();
+		if (c == null) {
+			systemConfig.compareAndSet(null,
+					openSystemConfig(getJGitConfig(), FS.DETECTED));
+			c = systemConfig.get();
+		}
+		updateAll(c);
+		return c;
+	}
+
+	/**
+	 * Update config and its parents if they seem modified
+	 *
+	 * @param config
+	 *            configuration to reload if outdated
+	 * @throws ConfigInvalidException
+	 *             if configuration is invalid
+	 * @throws IOException
+	 *             if something went wrong when reading files
+	 */
+	private void updateAll(Config config)
+			throws ConfigInvalidException, IOException {
+		if (config == null) {
+			return;
+		}
+		updateAll(config.getBaseConfig());
+		if (config instanceof FileBasedConfig) {
+			FileBasedConfig cfg = (FileBasedConfig) config;
+			if (cfg.isOutdated()) {
+				LOG.debug("loading config {}", cfg); //$NON-NLS-1$
+				cfg.load();
+			}
+		}
+	}
+
+	/**
+	 * Get the current system time
+	 *
 	 * @return the current system time
 	 */
 	public abstract long getCurrentTime();
 
 	/**
+	 * Get clock instance preferred by this system.
+	 *
 	 * @return clock instance preferred by this system.
 	 * @since 4.6
 	 */
@@ -241,12 +410,17 @@ public abstract class SystemReader {
 	}
 
 	/**
-	 * @param when TODO
+	 * Get the local time zone
+	 *
+	 * @param when
+	 *            a system timestamp
 	 * @return the local time zone
 	 */
 	public abstract int getTimezone(long when);
 
 	/**
+	 * Get system time zone, possibly mocked for testing
+	 *
 	 * @return system time zone, possibly mocked for testing
 	 * @since 1.2
 	 */
@@ -255,6 +429,8 @@ public abstract class SystemReader {
 	}
 
 	/**
+	 * Get the locale to use
+	 *
 	 * @return the locale to use
 	 * @since 1.2
 	 */
@@ -267,7 +443,7 @@ public abstract class SystemReader {
 	 *
 	 * @param pattern
 	 *            the pattern as defined in
-	 *            {@link SimpleDateFormat#SimpleDateFormat(String)}
+	 *            {@link java.text.SimpleDateFormat#SimpleDateFormat(String)}
 	 * @return the simple date format
 	 * @since 2.0
 	 */
@@ -280,7 +456,7 @@ public abstract class SystemReader {
 	 *
 	 * @param pattern
 	 *            the pattern as defined in
-	 *            {@link SimpleDateFormat#SimpleDateFormat(String)}
+	 *            {@link java.text.SimpleDateFormat#SimpleDateFormat(String)}
 	 * @param locale
 	 *            locale to be used for the {@code SimpleDateFormat}
 	 * @return the simple date format
@@ -295,10 +471,10 @@ public abstract class SystemReader {
 	 *
 	 * @param dateStyle
 	 *            the date style as specified in
-	 *            {@link DateFormat#getDateTimeInstance(int, int)}
+	 *            {@link java.text.DateFormat#getDateTimeInstance(int, int)}
 	 * @param timeStyle
 	 *            the time style as specified in
-	 *            {@link DateFormat#getDateTimeInstance(int, int)}
+	 *            {@link java.text.DateFormat#getDateTimeInstance(int, int)}
 	 * @return the date format
 	 * @since 2.0
 	 */
@@ -307,7 +483,9 @@ public abstract class SystemReader {
 	}
 
 	/**
-	 * @return true if we are running on a Windows.
+	 * Whether we are running on Windows.
+	 *
+	 * @return true if we are running on Windows.
 	 */
 	public boolean isWindows() {
 		if (isWindows == null) {
@@ -318,6 +496,8 @@ public abstract class SystemReader {
 	}
 
 	/**
+	 * Whether we are running on Mac OS X
+	 *
 	 * @return true if we are running on Mac OS X
 	 */
 	public boolean isMacOS() {
@@ -330,11 +510,9 @@ public abstract class SystemReader {
 	}
 
 	private String getOsName() {
-		return AccessController.doPrivileged(new PrivilegedAction<String>() {
-			public String run() {
-				return getProperty("os.name"); //$NON-NLS-1$
-			}
-		});
+		return AccessController.doPrivileged(
+				(PrivilegedAction<String>) () -> getProperty("os.name") //$NON-NLS-1$
+		);
 	}
 
 	/**
@@ -343,7 +521,7 @@ public abstract class SystemReader {
 	 * Scans a multi-directory path string such as {@code "src/main.c"}.
 	 *
 	 * @param path path string to scan.
-	 * @throws CorruptObjectException path is invalid.
+	 * @throws org.eclipse.jgit.errors.CorruptObjectException path is invalid.
 	 * @since 3.6
 	 */
 	public void checkPath(String path) throws CorruptObjectException {
@@ -357,7 +535,7 @@ public abstract class SystemReader {
 	 *
 	 * @param path
 	 *            path string to scan.
-	 * @throws CorruptObjectException
+	 * @throws org.eclipse.jgit.errors.CorruptObjectException
 	 *             path is invalid.
 	 * @since 4.2
 	 */

@@ -38,7 +38,8 @@
 package org.eclipse.jgit.api.errors;
 
 /**
- * Exception thrown when the server rejected a too large pack
+ * Exception thrown when PackParser finds an object larger than a predefined
+ * limit
  *
  * @since 4.4
  */
@@ -46,6 +47,8 @@ public class TooLargeObjectInPackException extends TransportException {
 	private static final long serialVersionUID = 1L;
 
 	/**
+	 * Constructor for TooLargeObjectInPackException
+	 *
 	 * @param msg
 	 *            message describing the transport failure.
 	 */
@@ -54,6 +57,8 @@ public class TooLargeObjectInPackException extends TransportException {
 	}
 
 	/**
+	 * Constructor for TooLargeObjectInPackException
+	 *
 	 * @param msg
 	 *            message describing the transport exception.
 	 * @param cause

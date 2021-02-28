@@ -1,48 +1,17 @@
 /*
- * Copyright (C) 2009-2010, Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2009-2010, Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.http.test;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -51,7 +20,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.File;
+import java.io.OutputStream;
 import java.net.URI;
+import java.net.URL;
 import java.util.List;
 
 import javax.servlet.http.HttpServletRequest;
@@ -67,7 +38,6 @@ import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.TestRepository;
 import org.eclipse.jgit.junit.http.AccessEvent;
 import org.eclipse.jgit.junit.http.AppServer;
-import org.eclipse.jgit.junit.http.HttpTestCase;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
@@ -75,15 +45,19 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.FetchConnection;
+import org.eclipse.jgit.transport.HttpTransport;
+import org.eclipse.jgit.transport.PacketLineIn;
+import org.eclipse.jgit.transport.PacketLineOut;
 import org.eclipse.jgit.transport.Transport;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.eclipse.jgit.transport.resolver.RepositoryResolver;
-import org.eclipse.jgit.transport.resolver.ServiceNotEnabledException;
+import org.eclipse.jgit.transport.http.HttpConnection;
+import org.eclipse.jgit.transport.http.HttpConnectionFactory;
 import org.junit.Before;
 import org.junit.Test;
 
-public class HttpClientTests extends HttpTestCase {
+public class HttpClientTests extends AllFactoriesHttpTestCase {
+
 	private TestRepository<Repository> remoteRepository;
 
 	private URIish dumbAuthNoneURI;
@@ -94,6 +68,11 @@ public class HttpClientTests extends HttpTestCase {
 
 	private URIish smartAuthBasicURI;
 
+	public HttpClientTests(HttpConnectionFactory cf) {
+		super(cf);
+	}
+
+	@Override
 	@Before
 	public void setUp() throws Exception {
 		super.setUp();
@@ -117,7 +96,7 @@ public class HttpClientTests extends HttpTestCase {
 		smartAuthBasicURI = toURIish(sBasic, srcName);
 	}
 
-	private ServletContextHandler dumb(final String path) {
+	private ServletContextHandler dumb(String path) {
 		final File srcGit = remoteRepository.getRepository().getDirectory();
 		final URI base = srcGit.getParentFile().toURI();
 
@@ -129,19 +108,15 @@ public class HttpClientTests extends HttpTestCase {
 		return ctx;
 	}
 
-	private ServletContextHandler smart(final String path) {
+	private ServletContextHandler smart(String path) {
 		GitServlet gs = new GitServlet();
-		gs.setRepositoryResolver(new RepositoryResolver<HttpServletRequest>() {
-			public Repository open(HttpServletRequest req, String name)
-					throws RepositoryNotFoundException,
-					ServiceNotEnabledException {
-				final Repository db = remoteRepository.getRepository();
-				if (!name.equals(nameOf(db)))
-					throw new RepositoryNotFoundException(name);
-
-				db.incrementOpen();
-				return db;
+		gs.setRepositoryResolver((HttpServletRequest req, String name) -> {
+			final Repository db = remoteRepository.getRepository();
+			if (!name.equals(nameOf(db))) {
+				throw new RepositoryNotFoundException(name);
 			}
+			db.incrementOpen();
+			return db;
 		});
 
 		ServletContextHandler ctx = server.addContext(path);
@@ -149,7 +124,7 @@ public class HttpClientTests extends HttpTestCase {
 		return ctx;
 	}
 
-	private static String nameOf(final Repository db) {
+	private static String nameOf(Repository db) {
 		return db.getDirectory().getName();
 	}
 
@@ -164,7 +139,9 @@ public class HttpClientTests extends HttpTestCase {
 			} catch (NoRemoteRepositoryException err) {
 				String exp = uri + ": " + uri
 						+ "/info/refs?service=git-upload-pack not found";
-				assertEquals(exp, err.getMessage());
+				assertNotNull(err.getMessage());
+				assertTrue("Unexpected error message",
+						err.getMessage().startsWith(exp));
 			}
 		}
 	}
@@ -180,7 +157,9 @@ public class HttpClientTests extends HttpTestCase {
 			} catch (NoRemoteRepositoryException err) {
 				String exp = uri + ": " + uri
 						+ "/info/refs?service=git-upload-pack not found";
-				assertEquals(exp, err.getMessage());
+				assertNotNull(err.getMessage());
+				assertTrue("Unexpected error message",
+						err.getMessage().startsWith(exp));
 			}
 		}
 	}
@@ -342,5 +321,87 @@ public class HttpClientTests extends HttpTestCase {
 			Ref head = c.getRef(Constants.HEAD);
 			assertNotNull(head);
 		}
+	}
+
+	@Test
+	public void testHttpClientWantsV2AndServerNotConfigured() throws Exception {
+		String url = smartAuthNoneURI.toString() + "/info/refs?service=git-upload-pack";
+		HttpConnection c = HttpTransport.getConnectionFactory()
+				.create(new URL(url));
+		c.setRequestMethod("GET");
+		c.setRequestProperty("Git-Protocol", "version=2");
+		assertEquals(200, c.getResponseCode());
+
+		PacketLineIn pckIn = new PacketLineIn(c.getInputStream());
+		assertThat(pckIn.readString(), is("version 2"));
+	}
+
+	@Test
+	public void testHttpServerConfiguredToV0() throws Exception {
+		remoteRepository.getRepository().getConfig().setInt(
+			"protocol", null, "version", 0);
+		String url = smartAuthNoneURI.toString() + "/info/refs?service=git-upload-pack";
+		HttpConnection c = HttpTransport.getConnectionFactory()
+				.create(new URL(url));
+		c.setRequestMethod("GET");
+		c.setRequestProperty("Git-Protocol", "version=2");
+		assertEquals(200, c.getResponseCode());
+
+		PacketLineIn pckIn = new PacketLineIn(c.getInputStream());
+
+		// Check that we get a v0 response.
+		assertThat(pckIn.readString(), is("# service=git-upload-pack"));
+		assertTrue(PacketLineIn.isEnd(pckIn.readString()));
+		assertTrue(pckIn.readString().matches("[0-9a-f]{40} HEAD.*"));
+	}
+
+	@Test
+	public void testV2HttpFirstResponse() throws Exception {
+		String url = smartAuthNoneURI.toString() + "/info/refs?service=git-upload-pack";
+		HttpConnection c = HttpTransport.getConnectionFactory()
+				.create(new URL(url));
+		c.setRequestMethod("GET");
+		c.setRequestProperty("Git-Protocol", "version=2");
+		assertEquals(200, c.getResponseCode());
+
+		PacketLineIn pckIn = new PacketLineIn(c.getInputStream());
+		assertThat(pckIn.readString(), is("version 2"));
+
+		// What remains are capabilities - ensure that all of them are
+		// non-empty strings, and that we see END at the end.
+		for (String s : pckIn.readStrings()) {
+			assertTrue(!s.isEmpty());
+		}
+	}
+
+	@Test
+	public void testV2HttpSubsequentResponse() throws Exception {
+		String url = smartAuthNoneURI.toString() + "/git-upload-pack";
+		HttpConnection c = HttpTransport.getConnectionFactory()
+				.create(new URL(url));
+		c.setRequestMethod("POST");
+		c.setRequestProperty("Content-Type", "application/x-git-upload-pack-request");
+		c.setRequestProperty("Git-Protocol", "version=2");
+		c.setDoOutput(true);
+
+		// Test ls-refs to verify that everything is connected
+		// properly. Tests for other commands go in
+		// UploadPackTest.java.
+
+		try (OutputStream os = c.getOutputStream()) {
+			PacketLineOut pckOut = new PacketLineOut(os);
+			pckOut.writeString("command=ls-refs");
+			pckOut.writeDelim();
+			pckOut.end();
+		}
+
+		PacketLineIn pckIn = new PacketLineIn(c.getInputStream());
+
+		// Just check that we get what looks like a ref advertisement.
+		for (String s : pckIn.readStrings()) {
+			assertTrue(s.matches("[0-9a-f]{40} [A-Za-z/]*"));
+		}
+
+		assertEquals(200, c.getResponseCode());
 	}
 }

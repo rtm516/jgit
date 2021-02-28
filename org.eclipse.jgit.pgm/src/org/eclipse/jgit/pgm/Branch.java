@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2007-2008, Charles O'Farrell <charleso@charleso.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2007-2008, Charles O'Farrell <charleso@charleso.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.pgm;
@@ -54,6 +21,7 @@ import java.util.Map.Entry;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.ListBranchCommand.ListMode;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
@@ -87,6 +55,12 @@ class Branch extends TextBuiltin {
 
 	private List<String> delete;
 
+	/**
+	 * Delete branches
+	 *
+	 * @param names
+	 *            a {@link java.util.List} of branch names.
+	 */
 	@Option(name = "--delete", aliases = {
 			"-d" }, metaVar = "metaVar_branchNames", usage = "usage_deleteFullyMergedBranch", handler = OptionWithValuesListHandler.class)
 	public void delete(List<String> names) {
@@ -98,6 +72,12 @@ class Branch extends TextBuiltin {
 
 	private List<String> deleteForce;
 
+	/**
+	 * Forcefully delete branches
+	 *
+	 * @param names
+	 *            a {@link java.util.List} of branch names.
+	 */
 	@Option(name = "--delete-force", aliases = {
 			"-D" }, metaVar = "metaVar_branchNames", usage = "usage_deleteBranchEvenIfNotMerged", handler = OptionWithValuesListHandler.class)
 	public void deleteForce(List<String> names) {
@@ -107,6 +87,12 @@ class Branch extends TextBuiltin {
 		deleteForce = names;
 	}
 
+	/**
+	 * Forcefully create a list of branches
+	 *
+	 * @param branchAndStartPoint
+	 *            a branch name and a start point
+	 */
 	@Option(name = "--create-force", aliases = {
 			"-f" }, metaVar = "metaVar_branchAndStartPoint", usage = "usage_forceCreateBranchEvenExists", handler = OptionWithValuesListHandler.class)
 	public void createForce(List<String> branchAndStartPoint) {
@@ -125,6 +111,12 @@ class Branch extends TextBuiltin {
 		}
 	}
 
+	/**
+	 * Move or rename a branch
+	 *
+	 * @param currentAndNew
+	 *            the current and the new branch name
+	 */
 	@Option(name = "--move", aliases = {
 			"-m" }, metaVar = "metaVar_oldNewBranchNames", usage = "usage_moveRenameABranch", handler = OptionWithValuesListHandler.class)
 	public void moveRename(List<String> currentAndNew) {
@@ -149,23 +141,26 @@ class Branch extends TextBuiltin {
 	@Argument(metaVar = "metaVar_name")
 	private String branch;
 
-	private final Map<String, Ref> printRefs = new LinkedHashMap<String, Ref>();
+	private final Map<String, Ref> printRefs = new LinkedHashMap<>();
 
 	/** Only set for verbose branch listing at-the-moment */
 	private RevWalk rw;
 
 	private int maxNameLength;
 
+	/** {@inheritDoc} */
 	@Override
-	protected void run() throws Exception {
-		if (delete != null || deleteForce != null) {
-			if (delete != null) {
-				delete(delete, false);
+	protected void run() {
+		try {
+			if (delete != null || deleteForce != null) {
+				if (delete != null) {
+					delete(delete, false);
+				}
+				if (deleteForce != null) {
+					delete(deleteForce, true);
+				}
+				return;
 			}
-			if (deleteForce != null) {
-				delete(deleteForce, true);
-			}
-		} else {
 			if (rename) {
 				String src, dst;
 				if (otherBranch == null) {
@@ -179,22 +174,27 @@ class Branch extends TextBuiltin {
 				} else {
 					src = branch;
 					final Ref old = db.findRef(src);
-					if (old == null)
+					if (old == null) {
 						throw die(MessageFormat.format(CLIText.get().doesNotExist, src));
-					if (!old.getName().startsWith(Constants.R_HEADS))
+					}
+					if (!old.getName().startsWith(Constants.R_HEADS)) {
 						throw die(MessageFormat.format(CLIText.get().notABranch, src));
+					}
 					src = old.getName();
 					dst = otherBranch;
 				}
 
-				if (!dst.startsWith(Constants.R_HEADS))
+				if (!dst.startsWith(Constants.R_HEADS)) {
 					dst = Constants.R_HEADS + dst;
-				if (!Repository.isValidRefName(dst))
+				}
+				if (!Repository.isValidRefName(dst)) {
 					throw die(MessageFormat.format(CLIText.get().notAValidRefName, dst));
+				}
 
 				RefRename r = db.renameRef(src, dst);
-				if (r.rename() != Result.RENAMED)
+				if (r.rename() != Result.RENAMED) {
 					throw die(MessageFormat.format(CLIText.get().cannotBeRenamed, src));
+				}
 
 			} else if (createForce || branch != null) {
 				String newHead = branch;
@@ -239,10 +239,12 @@ class Branch extends TextBuiltin {
 				}
 				list();
 			}
+		} catch (IOException | GitAPIException e) {
+			throw die(e.getMessage(), e);
 		}
 	}
 
-	private void list() throws Exception {
+	private void list() throws IOException, GitAPIException {
 		Ref head = db.exactRef(Constants.HEAD);
 		// This can happen if HEAD is stillborn
 		if (head != null) {
@@ -267,7 +269,7 @@ class Branch extends TextBuiltin {
 				addRefs(refs, Constants.R_REMOTES);
 
 				try (ObjectReader reader = db.newObjectReader()) {
-					for (final Entry<String, Ref> e : printRefs.entrySet()) {
+					for (Entry<String, Ref> e : printRefs.entrySet()) {
 						final Ref ref = e.getValue();
 						printHead(reader, e.getKey(),
 								current.equals(ref.getName()), ref);
@@ -277,21 +279,21 @@ class Branch extends TextBuiltin {
 		}
 	}
 
-	private void addRefs(final Collection<Ref> refs, final String prefix) {
-		for (final Ref ref : RefComparator.sort(refs)) {
+	private void addRefs(Collection<Ref> refs, String prefix) {
+		for (Ref ref : RefComparator.sort(refs)) {
 			final String name = ref.getName();
 			if (name.startsWith(prefix))
 				addRef(name.substring(name.indexOf('/', 5) + 1), ref);
 		}
 	}
 
-	private void addRef(final String name, final Ref ref) {
+	private void addRef(String name, Ref ref) {
 		printRefs.put(name, ref);
 		maxNameLength = Math.max(maxNameLength, name.length());
 	}
 
 	private void printHead(final ObjectReader reader, final String ref,
-			final boolean isCurrent, final Ref refObj) throws Exception {
+			final boolean isCurrent, final Ref refObj) throws IOException {
 		outw.print(isCurrent ? '*' : ' ');
 		outw.print(' ');
 		outw.print(ref);

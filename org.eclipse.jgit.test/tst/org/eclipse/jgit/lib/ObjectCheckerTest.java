@@ -1,50 +1,19 @@
 /*
  * Copyright (C) 2008-2010, Google Inc.
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lib;
 
 import static java.lang.Integer.valueOf;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.eclipse.jgit.junit.JGitTestUtil.concat;
 import static org.eclipse.jgit.lib.Constants.OBJECT_ID_LENGTH;
 import static org.eclipse.jgit.lib.Constants.OBJ_BAD;
 import static org.eclipse.jgit.lib.Constants.OBJ_BLOB;
@@ -62,11 +31,12 @@ import static org.eclipse.jgit.lib.ObjectChecker.ErrorType.HAS_DOTGIT;
 import static org.eclipse.jgit.lib.ObjectChecker.ErrorType.NULL_SHA1;
 import static org.eclipse.jgit.lib.ObjectChecker.ErrorType.TREE_NOT_SORTED;
 import static org.eclipse.jgit.lib.ObjectChecker.ErrorType.ZERO_PADDED_FILEMODE;
+import static org.eclipse.jgit.util.RawParseUtils.decode;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 
-import java.io.UnsupportedEncodingException;
 import java.text.MessageFormat;
 
 import org.eclipse.jgit.errors.CorruptObjectException;
@@ -75,6 +45,42 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class ObjectCheckerTest {
+	private static final ObjectChecker SECRET_KEY_CHECKER = new ObjectChecker() {
+		@Override
+		public void checkBlob(byte[] raw) throws CorruptObjectException {
+			String in = decode(raw);
+			if (in.contains("secret_key")) {
+				throw new CorruptObjectException("don't add a secret key");
+			}
+		}
+	};
+
+	private static final ObjectChecker SECRET_KEY_BLOB_CHECKER = new ObjectChecker() {
+		@Override
+		public BlobObjectChecker newBlobObjectChecker() {
+			return new BlobObjectChecker() {
+				private boolean containSecretKey;
+
+				@Override
+				public void update(byte[] in, int offset, int len) {
+					String str = decode(in, offset, offset + len);
+					if (str.contains("secret_key")) {
+						containSecretKey = true;
+					}
+				}
+
+				@Override
+				public void endBlob(AnyObjectId id)
+						throws CorruptObjectException {
+					if (containSecretKey) {
+						throw new CorruptObjectException(
+								"don't add a secret key");
+					}
+				}
+			};
+		}
+	};
+
 	private ObjectChecker checker;
 
 	@Before
@@ -98,6 +104,30 @@ public class ObjectCheckerTest {
 
 		checker.check(OBJ_BLOB, new byte[0]);
 		checker.check(OBJ_BLOB, new byte[1]);
+	}
+
+	@Test
+	public void testCheckBlobNotCorrupt() throws CorruptObjectException {
+		SECRET_KEY_CHECKER.check(OBJ_BLOB, encodeASCII("key = \"public_key\""));
+	}
+
+	@Test
+	public void testCheckBlobCorrupt() {
+		assertThrows(CorruptObjectException.class, () -> SECRET_KEY_CHECKER
+				.check(OBJ_BLOB, encodeASCII("key = \"secret_key\"")));
+	}
+
+	@Test
+	public void testCheckBlobWithBlobObjectCheckerNotCorrupt()
+			throws CorruptObjectException {
+		SECRET_KEY_BLOB_CHECKER.check(OBJ_BLOB,
+				encodeASCII("key = \"public_key\""));
+	}
+
+	@Test
+	public void testCheckBlobWithBlobObjectCheckerCorrupt() {
+		assertThrows(CorruptObjectException.class, () -> SECRET_KEY_BLOB_CHECKER
+				.check(OBJ_BLOB, encodeASCII("key = \"secret_key\"")));
 	}
 
 	@Test
@@ -768,6 +798,112 @@ public class ObjectCheckerTest {
 	}
 
 	@Test
+	public void testValidTreeWithGitmodules() throws CorruptObjectException {
+		ObjectId treeId = ObjectId
+				.fromString("0123012301230123012301230123012301230123");
+		StringBuilder b = new StringBuilder();
+		ObjectId blobId = entry(b, "100644 .gitmodules");
+
+		byte[] data = encodeASCII(b.toString());
+		checker.checkTree(treeId, data);
+		assertEquals(1, checker.getGitsubmodules().size());
+		assertEquals(treeId, checker.getGitsubmodules().get(0).getTreeId());
+		assertEquals(blobId, checker.getGitsubmodules().get(0).getBlobId());
+	}
+
+	/*
+	 * Windows case insensitivity and long file name handling
+	 * means that .gitmodules has many synonyms.
+	 *
+	 * Examples inspired by git.git's t/t0060-path-utils.sh, by
+	 * Johannes Schindelin and Congyi Wu.
+	 */
+	@Test
+	public void testNTFSGitmodules() throws CorruptObjectException {
+		for (String gitmodules : new String[] {
+			".GITMODULES",
+			".gitmodules",
+			".Gitmodules",
+			".gitmoduleS",
+			"gitmod~1",
+			"GITMOD~1",
+			"gitmod~4",
+			"GI7EBA~1",
+			"gi7eba~9",
+			"GI7EB~10",
+			"GI7E~123",
+			"~1000000",
+			"~9999999"
+		}) {
+			checker = new ObjectChecker(); // Reset the ObjectChecker state.
+			checker.setSafeForWindows(true);
+			ObjectId treeId = ObjectId
+					.fromString("0123012301230123012301230123012301230123");
+			StringBuilder b = new StringBuilder();
+			ObjectId blobId = entry(b, "100644 " + gitmodules);
+
+			byte[] data = encodeASCII(b.toString());
+			checker.checkTree(treeId, data);
+			assertEquals(1, checker.getGitsubmodules().size());
+			assertEquals(treeId, checker.getGitsubmodules().get(0).getTreeId());
+			assertEquals(blobId, checker.getGitsubmodules().get(0).getBlobId());
+		}
+	}
+
+	@Test
+	public void testNotGitmodules() throws CorruptObjectException {
+		for (String notGitmodules : new String[] {
+			".gitmodu",
+			".gitmodules oh never mind",
+		}) {
+			checker = new ObjectChecker(); // Reset the ObjectChecker state.
+			checker.setSafeForWindows(true);
+			ObjectId treeId = ObjectId
+					.fromString("0123012301230123012301230123012301230123");
+			StringBuilder b = new StringBuilder();
+			entry(b, "100644 " + notGitmodules);
+
+			byte[] data = encodeASCII(b.toString());
+			checker.checkTree(treeId, data);
+			assertEquals(0, checker.getGitsubmodules().size());
+		}
+	}
+
+	/*
+	 * TODO HFS: match ".gitmodules" case-insensitively, after stripping out
+	 * certain zero-length Unicode code points that HFS+ strips out
+	 */
+
+	@Test
+	public void testValidTreeWithGitmodulesUppercase()
+			throws CorruptObjectException {
+		ObjectId treeId = ObjectId
+				.fromString("0123012301230123012301230123012301230123");
+		StringBuilder b = new StringBuilder();
+		ObjectId blobId = entry(b, "100644 .GITMODULES");
+
+		byte[] data = encodeASCII(b.toString());
+		checker.setSafeForWindows(true);
+		checker.checkTree(treeId, data);
+		assertEquals(1, checker.getGitsubmodules().size());
+		assertEquals(treeId, checker.getGitsubmodules().get(0).getTreeId());
+		assertEquals(blobId, checker.getGitsubmodules().get(0).getBlobId());
+	}
+
+	@Test
+	public void testTreeWithInvalidGitmodules() throws CorruptObjectException {
+		ObjectId treeId = ObjectId
+				.fromString("0123012301230123012301230123012301230123");
+		StringBuilder b = new StringBuilder();
+		entry(b, "100644 .gitmodulez");
+
+		byte[] data = encodeASCII(b.toString());
+		checker.checkTree(treeId, data);
+		checker.setSafeForWindows(true);
+		assertEquals(0, checker.getGitsubmodules().size());
+	}
+
+	@Test
 	public void testNullSha1InTreeEntry() throws CorruptObjectException {
 		byte[] data = concat(
 				encodeASCII("100644 A"), new byte[] { '\0' },
@@ -1054,20 +1190,7 @@ public class ObjectCheckerTest {
 		checker.checkTree(data);
 	}
 
-	private static byte[] concat(byte[]... b) {
-		int n = 0;
-		for (byte[] a : b) {
-			n += a.length;
-		}
 
-		byte[] data = new byte[n];
-		n = 0;
-		for (byte[] a : b) {
-			System.arraycopy(a, 0, data, n, a.length);
-			n += a.length;
-		}
-		return data;
-	}
 
 	@Test
 	public void testInvalidTreeNameIsMacHFSGitCorruptUTF8AtEnd()
@@ -1394,11 +1517,11 @@ public class ObjectCheckerTest {
 
 	@Test
 	public void testInvalidTreeDuplicateNames5()
-			throws UnsupportedEncodingException, CorruptObjectException {
+			throws CorruptObjectException {
 		StringBuilder b = new StringBuilder();
 		entry(b, "100644 A");
 		entry(b, "100644 a");
-		byte[] data = b.toString().getBytes("UTF-8");
+		byte[] data = b.toString().getBytes(UTF_8);
 		checker.setSafeForWindows(true);
 		assertCorrupt("duplicate entry names", OBJ_TREE, data);
 		assertSkipListAccepts(OBJ_TREE, data);
@@ -1408,11 +1531,11 @@ public class ObjectCheckerTest {
 
 	@Test
 	public void testInvalidTreeDuplicateNames6()
-			throws UnsupportedEncodingException, CorruptObjectException {
+			throws CorruptObjectException {
 		StringBuilder b = new StringBuilder();
 		entry(b, "100644 A");
 		entry(b, "100644 a");
-		byte[] data = b.toString().getBytes("UTF-8");
+		byte[] data = b.toString().getBytes(UTF_8);
 		checker.setSafeForMacOS(true);
 		assertCorrupt("duplicate entry names", OBJ_TREE, data);
 		assertSkipListAccepts(OBJ_TREE, data);
@@ -1422,11 +1545,11 @@ public class ObjectCheckerTest {
 
 	@Test
 	public void testInvalidTreeDuplicateNames7()
-			throws UnsupportedEncodingException, CorruptObjectException {
+			throws CorruptObjectException {
 		StringBuilder b = new StringBuilder();
 		entry(b, "100644 \u0065\u0301");
 		entry(b, "100644 \u00e9");
-		byte[] data = b.toString().getBytes("UTF-8");
+		byte[] data = b.toString().getBytes(UTF_8);
 		checker.setSafeForMacOS(true);
 		assertCorrupt("duplicate entry names", OBJ_TREE, data);
 		assertSkipListAccepts(OBJ_TREE, data);
@@ -1436,11 +1559,11 @@ public class ObjectCheckerTest {
 
 	@Test
 	public void testInvalidTreeDuplicateNames8()
-			throws UnsupportedEncodingException, CorruptObjectException {
+			throws CorruptObjectException {
 		StringBuilder b = new StringBuilder();
 		entry(b, "100644 A");
 		checker.setSafeForMacOS(true);
-		checker.checkTree(b.toString().getBytes("UTF-8"));
+		checker.checkTree(b.toString().getBytes(UTF_8));
 	}
 
 	@Test
@@ -1516,7 +1639,6 @@ public class ObjectCheckerTest {
 		rejectName('>');
 		rejectName(':');
 		rejectName('"');
-		rejectName('/');
 		rejectName('\\');
 		rejectName('|');
 		rejectName('?');
@@ -1531,7 +1653,8 @@ public class ObjectCheckerTest {
 			checkOneName("te" + c + "st");
 			fail("incorrectly accepted with " + c);
 		} catch (CorruptObjectException e) {
-			assertEquals("name contains '" + c + "'", e.getMessage());
+
+			assertEquals("char '" + c + "' not allowed in Windows filename", e.getMessage());
 		}
 	}
 
@@ -1541,7 +1664,19 @@ public class ObjectCheckerTest {
 			checkOneName("te" + ((char) c) + "st");
 			fail("incorrectly accepted with 0x" + h);
 		} catch (CorruptObjectException e) {
-			assertEquals("name contains byte 0x" + h, e.getMessage());
+			assertEquals("byte 0x" + h + " not allowed in Windows filename", e.getMessage());
+		}
+	}
+
+
+	@Test
+	public void testRejectInvalidCharacter() {
+		try {
+			checkOneName("te/st");
+			fail("incorrectly accepted with /");
+		} catch (CorruptObjectException e) {
+
+			assertEquals("name contains '/'", e.getMessage());
 		}
 	}
 
@@ -1551,11 +1686,20 @@ public class ObjectCheckerTest {
 		checker.checkTree(encodeASCII(b.toString()));
 	}
 
-	private static void entry(StringBuilder b, final String modeName) {
+	/*
+	 * Returns the id generated for the entry
+	 */
+	private static ObjectId entry(StringBuilder b, String modeName) {
+		byte[] id = new byte[OBJECT_ID_LENGTH];
+
 		b.append(modeName);
 		b.append('\0');
-		for (int i = 0; i < OBJECT_ID_LENGTH; i++)
+		for (int i = 0; i < OBJECT_ID_LENGTH; i++) {
 			b.append((char) i);
+			id[i] = (byte) i;
+		}
+
+		return ObjectId.fromRaw(id);
 	}
 
 	private void assertCorrupt(String msg, int type, StringBuilder b) {
@@ -1591,17 +1735,14 @@ public class ObjectCheckerTest {
 		checker.setSkipList(null);
 	}
 
-	private static ObjectIdSet set(final ObjectId... ids) {
-		return new ObjectIdSet() {
-			@Override
-			public boolean contains(AnyObjectId objectId) {
-				for (ObjectId id : ids) {
-					if (id.equals(objectId)) {
-						return true;
-					}
+	private static ObjectIdSet set(ObjectId... ids) {
+		return (AnyObjectId objectId) -> {
+			for (ObjectId id : ids) {
+				if (id.equals(objectId)) {
+					return true;
 				}
-				return false;
 			}
+			return false;
 		};
 	}
 

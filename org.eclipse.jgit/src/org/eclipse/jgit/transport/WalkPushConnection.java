@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.transport;
@@ -134,26 +101,30 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		dest = w;
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void push(final ProgressMonitor monitor,
 			final Map<String, RemoteRefUpdate> refUpdates)
 			throws TransportException {
 		push(monitor, refUpdates, null);
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void push(final ProgressMonitor monitor,
 			final Map<String, RemoteRefUpdate> refUpdates, OutputStream out)
 			throws TransportException {
 		markStartedOperation();
 		packNames = null;
-		newRefs = new TreeMap<String, Ref>(getRefsMap());
-		packedRefUpdates = new ArrayList<RemoteRefUpdate>(refUpdates.size());
+		newRefs = new TreeMap<>(getRefsMap());
+		packedRefUpdates = new ArrayList<>(refUpdates.size());
 
 		// Filter the commands and issue all deletes first. This way we
 		// can correctly handle a directory being cleared out and a new
 		// ref using the directory name being created.
 		//
-		final List<RemoteRefUpdate> updates = new ArrayList<RemoteRefUpdate>();
-		for (final RemoteRefUpdate u : refUpdates.values()) {
+		final List<RemoteRefUpdate> updates = new ArrayList<>();
+		for (RemoteRefUpdate u : refUpdates.values()) {
 			final String n = u.getRemoteName();
 			if (!n.startsWith("refs/") || !Repository.isValidRefName(n)) { //$NON-NLS-1$
 				u.setStatus(Status.REJECTED_OTHER_REASON);
@@ -161,7 +132,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 				continue;
 			}
 
-			if (AnyObjectId.equals(ObjectId.zeroId(), u.getNewObjectId()))
+			if (AnyObjectId.isEqual(ObjectId.zeroId(), u.getNewObjectId()))
 				deleteCommand(u);
 			else
 				updates.add(u);
@@ -173,7 +144,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		//
 		if (!updates.isEmpty())
 			sendpack(updates, monitor);
-		for (final RemoteRefUpdate u : updates)
+		for (RemoteRefUpdate u : updates)
 			updateCommand(u);
 
 		// Is this a new repository? If so we should create additional
@@ -192,10 +163,10 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		if (!packedRefUpdates.isEmpty()) {
 			try {
 				refWriter.writePackedRefs();
-				for (final RemoteRefUpdate u : packedRefUpdates)
+				for (RemoteRefUpdate u : packedRefUpdates)
 					u.setStatus(Status.OK);
 			} catch (IOException err) {
-				for (final RemoteRefUpdate u : packedRefUpdates) {
+				for (RemoteRefUpdate u : packedRefUpdates) {
 					u.setStatus(Status.REJECTED_OTHER_REASON);
 					u.setMessage(err.getMessage());
 				}
@@ -210,6 +181,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void close() {
 		dest.close();
@@ -220,14 +192,14 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		String pathPack = null;
 		String pathIdx = null;
 
-		try (final PackWriter writer = new PackWriter(transport.getPackConfig(),
+		try (PackWriter writer = new PackWriter(transport.getPackConfig(),
 				local.newObjectReader())) {
 
-			final Set<ObjectId> need = new HashSet<ObjectId>();
-			final Set<ObjectId> have = new HashSet<ObjectId>();
-			for (final RemoteRefUpdate r : updates)
+			final Set<ObjectId> need = new HashSet<>();
+			final Set<ObjectId> have = new HashSet<>();
+			for (RemoteRefUpdate r : updates)
 				need.add(r.getNewObjectId());
-			for (final Ref r : getRefs()) {
+			for (Ref r : getRefs()) {
 				have.add(r.getObjectId());
 				if (r.getPeeledObjectId() != null)
 					have.add(r.getPeeledObjectId());
@@ -241,8 +213,8 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 			if (writer.getObjectCount() == 0)
 				return;
 
-			packNames = new LinkedHashMap<String, String>();
-			for (final String n : dest.getPackNames())
+			packNames = new LinkedHashMap<>();
+			for (String n : dest.getPackNames())
 				packNames.put(n, n);
 
 			final String base = "pack-" + writer.computeName().name(); //$NON-NLS-1$
@@ -277,7 +249,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 			// way clients are likely to consult the newest pack first,
 			// and discover the most recent objects there.
 			//
-			final ArrayList<String> infoPacks = new ArrayList<String>();
+			final ArrayList<String> infoPacks = new ArrayList<>();
 			infoPacks.add(packName);
 			infoPacks.addAll(packNames.keySet());
 			dest.writeInfoPacks(infoPacks);
@@ -290,7 +262,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		}
 	}
 
-	private void safeDelete(final String path) {
+	private void safeDelete(String path) {
 		if (path != null) {
 			try {
 				dest.deleteFile(path);
@@ -302,7 +274,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		}
 	}
 
-	private void deleteCommand(final RemoteRefUpdate u) {
+	private void deleteCommand(RemoteRefUpdate u) {
 		final Ref r = newRefs.remove(u.getRemoteName());
 		if (r == null) {
 			// Already gone.
@@ -332,7 +304,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		}
 	}
 
-	private void updateCommand(final RemoteRefUpdate u) {
+	private void updateCommand(RemoteRefUpdate u) {
 		try {
 			dest.writeRef(u.getRemoteName(), u.getNewObjectId());
 			newRefs.put(u.getRemoteName(), new ObjectIdRef.Unpeeled(
@@ -349,7 +321,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 				&& packNames.isEmpty();
 	}
 
-	private void createNewRepository(final List<RemoteRefUpdate> updates)
+	private void createNewRepository(List<RemoteRefUpdate> updates)
 			throws TransportException {
 		try {
 			final String ref = "ref: " + pickHEAD(updates) + "\n"; //$NON-NLS-1$ //$NON-NLS-2$
@@ -369,12 +341,12 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		}
 	}
 
-	private static String pickHEAD(final List<RemoteRefUpdate> updates) {
+	private static String pickHEAD(List<RemoteRefUpdate> updates) {
 		// Try to use master if the user is pushing that, it is the
 		// default branch and is likely what they want to remain as
 		// the default on the new remote.
 		//
-		for (final RemoteRefUpdate u : updates) {
+		for (RemoteRefUpdate u : updates) {
 			final String n = u.getRemoteName();
 			if (n.equals(Constants.R_HEADS + Constants.MASTER))
 				return n;
@@ -383,7 +355,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		// Pick any branch, under the assumption the user pushed only
 		// one to the remote side.
 		//
-		for (final RemoteRefUpdate u : updates) {
+		for (RemoteRefUpdate u : updates) {
 			final String n = u.getRemoteName();
 			if (n.startsWith(Constants.R_HEADS))
 				return n;

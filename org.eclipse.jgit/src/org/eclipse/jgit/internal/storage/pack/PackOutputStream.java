@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2008-2009, Google Inc.
- * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.internal.storage.pack;
@@ -57,7 +24,10 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.util.NB;
 
-/** Custom output stream to support {@link PackWriter}. */
+/**
+ * Custom output stream to support
+ * {@link org.eclipse.jgit.internal.storage.pack.PackWriter}.
+ */
 public final class PackOutputStream extends OutputStream {
 	private static final int BYTES_TO_WRITE_BEFORE_CANCEL_CHECK = 128 * 1024;
 
@@ -84,7 +54,8 @@ public final class PackOutputStream extends OutputStream {
 	 * <p>
 	 * This constructor is exposed to support debugging the JGit library only.
 	 * Application or storage level code should not create a PackOutputStream,
-	 * instead use {@link PackWriter}, and let the writer create the stream.
+	 * instead use {@link org.eclipse.jgit.internal.storage.pack.PackWriter},
+	 * and let the writer create the stream.
 	 *
 	 * @param writeMonitor
 	 *            monitor to update on object output progress.
@@ -101,15 +72,17 @@ public final class PackOutputStream extends OutputStream {
 		this.checkCancelAt = BYTES_TO_WRITE_BEFORE_CANCEL_CHECK;
 	}
 
+	/** {@inheritDoc} */
 	@Override
-	public final void write(final int b) throws IOException {
+	public final void write(int b) throws IOException {
 		count++;
 		out.write(b);
 		md.update((byte) b);
 	}
 
+	/** {@inheritDoc} */
 	@Override
-	public final void write(final byte[] b, int off, int len)
+	public final void write(byte[] b, int off, int len)
 			throws IOException {
 		while (0 < len) {
 			final int n = Math.min(len, BYTES_TO_WRITE_BEFORE_CANCEL_CHECK);
@@ -131,6 +104,7 @@ public final class PackOutputStream extends OutputStream {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void flush() throws IOException {
 		out.flush();
@@ -154,7 +128,7 @@ public final class PackOutputStream extends OutputStream {
 	 *
 	 * @param otp
 	 *            the object to write.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             the object cannot be read from the object reader, or the
 	 *             output stream is no longer accepting output. Caller must
 	 *             examine the type of exception and possibly its message to
@@ -177,9 +151,10 @@ public final class PackOutputStream extends OutputStream {
 	 *            in whole object format, this is the same as the object size.
 	 *            For an object that is in a delta format, this is the size of
 	 *            the inflated delta instruction stream.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             the underlying stream refused to accept the header.
 	 */
+	@SuppressWarnings("ShortCircuitBoolean")
 	public final void writeHeader(ObjectToPack otp, long rawLength)
 			throws IOException {
 		ObjectToPack b = otp.getDeltaBase();
@@ -224,7 +199,11 @@ public final class PackOutputStream extends OutputStream {
 		return n;
 	}
 
-	/** @return a temporary buffer writers can use to copy data with. */
+	/**
+	 * Get a temporary buffer writers can use to copy data with.
+	 *
+	 * @return a temporary buffer writers can use to copy data with.
+	 */
 	public final byte[] getCopyBuffer() {
 		return copyBuffer;
 	}
@@ -233,7 +212,11 @@ public final class PackOutputStream extends OutputStream {
 		writeMonitor.update(1);
 	}
 
-	/** @return total number of bytes written since stream start. */
+	/**
+	 * Get total number of bytes written since stream start.
+	 *
+	 * @return total number of bytes written since stream start.
+	 */
 	public final long length() {
 		return count;
 	}

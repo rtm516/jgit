@@ -1,48 +1,17 @@
 /*
- * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lfs.lib;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -54,14 +23,13 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.lfs.errors.InvalidLongObjectIdException;
 import org.eclipse.jgit.lfs.test.LongObjectIdTestUtils;
-import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.util.FileUtils;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -152,7 +120,7 @@ public class LongObjectIdTest {
 	public void test011_toString() {
 		final String x = "0123456789ABCDEFabcdef01234567890123456789ABCDEFabcdef0123456789";
 		final LongObjectId oid = LongObjectId.fromString(x);
-		assertEquals(x.toLowerCase(), oid.name());
+		assertEquals(x.toLowerCase(Locale.ROOT), oid.name());
 	}
 
 	@Test
@@ -269,7 +237,7 @@ public class LongObjectIdTest {
 	public void testCopyFromStringByte() {
 		AnyLongObjectId id1 = LongObjectIdTestUtils.hash("test");
 		byte[] buf = new byte[64];
-		Charset cs = StandardCharsets.US_ASCII;
+		Charset cs = US_ASCII;
 		cs.encode(id1.name()).get(buf);
 		AnyLongObjectId id2 = LongObjectId.fromString(buf, 0);
 		assertEquals("objects should be equals", id1, id2);
@@ -290,7 +258,8 @@ public class LongObjectIdTest {
 				"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 		assertEquals(0, id1.compareTo(LongObjectId.fromString(
 				"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")));
-		assertEquals(0, id1.compareTo(id1));
+		AnyLongObjectId self = id1;
+		assertEquals(0, id1.compareTo(self));
 
 		assertEquals(-1, id1.compareTo(LongObjectId.fromString(
 				"1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")));
@@ -390,9 +359,10 @@ public class LongObjectIdTest {
 	public void testCopyToWriter() throws IOException {
 		AnyLongObjectId id1 = LongObjectIdTestUtils.hash("test");
 		ByteArrayOutputStream os = new ByteArrayOutputStream(64);
-		OutputStreamWriter w = new OutputStreamWriter(os, Constants.CHARSET);
-		id1.copyTo(w);
-		w.close();
+		try (OutputStreamWriter w = new OutputStreamWriter(os,
+				UTF_8)) {
+			id1.copyTo(w);
+		}
 		assertEquals(id1, LongObjectId.fromString(os.toByteArray(), 0));
 	}
 
@@ -400,10 +370,11 @@ public class LongObjectIdTest {
 	public void testCopyToWriterWithBuf() throws IOException {
 		AnyLongObjectId id1 = LongObjectIdTestUtils.hash("test");
 		ByteArrayOutputStream os = new ByteArrayOutputStream(64);
-		OutputStreamWriter w = new OutputStreamWriter(os, Constants.CHARSET);
-		char[] buf = new char[64];
-		id1.copyTo(buf, w);
-		w.close();
+		try (OutputStreamWriter w = new OutputStreamWriter(os,
+				UTF_8)) {
+			char[] buf = new char[64];
+			id1.copyTo(buf, w);
+		}
 		assertEquals(id1, LongObjectId.fromString(os.toByteArray(), 0));
 	}
 

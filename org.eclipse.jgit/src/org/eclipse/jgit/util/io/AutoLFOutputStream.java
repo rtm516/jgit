@@ -1,43 +1,12 @@
 /*
  * Copyright (C) 2015, Ivan Motsch <ivan.motsch@bsiag.com>
+ * Copyright (C) 2020, Thomas Wolf <thomas.wolf@paranor.ch> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.util.io;
@@ -49,11 +18,15 @@ import org.eclipse.jgit.diff.RawText;
 
 /**
  * An OutputStream that reduces CRLF to LF.
- *
+ * <p>
  * Existing single CR are not changed to LF, but retained as is.
- *
+ * </p>
+ * <p>
  * A binary check on the first 8000 bytes is performed and in case of binary
- * files, canonicalization is turned off (for the complete file).
+ * files, canonicalization is turned off (for the complete file). If the binary
+ * check determines that the input is not binary but text with CR/LF,
+ * canonicalization is also turned off.
+ * </p>
  *
  * @since 4.3
  */
@@ -76,14 +49,20 @@ public class AutoLFOutputStream extends OutputStream {
 	private boolean isBinary;
 
 	/**
+	 * Constructor for AutoLFOutputStream.
+	 *
 	 * @param out
+	 *            an {@link java.io.OutputStream} object.
 	 */
 	public AutoLFOutputStream(OutputStream out) {
 		this(out, true);
 	}
 
 	/**
+	 * Constructor for AutoLFOutputStream.
+	 *
 	 * @param out
+	 *            an {@link java.io.OutputStream} object.
 	 * @param detectBinary
 	 *            whether binaries should be detected
 	 */
@@ -92,12 +71,14 @@ public class AutoLFOutputStream extends OutputStream {
 		this.detectBinary = detectBinary;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void write(int b) throws IOException {
 		onebytebuf[0] = (byte) b;
 		write(onebytebuf, 0, 1);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void write(byte[] b) throws IOException {
 		int overflow = buffer(b, 0, b.length);
@@ -106,18 +87,16 @@ public class AutoLFOutputStream extends OutputStream {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
-	public void write(byte[] b, final int startOff, final int startLen)
+	public void write(byte[] b, int startOff, int startLen)
 			throws IOException {
 		final int overflow = buffer(b, startOff, startLen);
-		if (overflow < 0) {
+		if (overflow <= 0) {
 			return;
 		}
 		final int off = startOff + startLen - overflow;
 		final int len = overflow;
-		if (len == 0) {
-			return;
-		}
 		int lastw = off;
 		if (isBinary) {
 			out.write(b, off, len);
@@ -125,14 +104,16 @@ public class AutoLFOutputStream extends OutputStream {
 		}
 		for (int i = off; i < off + len; ++i) {
 			final byte c = b[i];
-			if (c == '\r') {
+			switch (c) {
+			case '\r':
 				// skip write r but backlog r
 				if (lastw < i) {
 					out.write(b, lastw, i - lastw);
 				}
 				lastw = i + 1;
 				buf = '\r';
-			} else if (c == '\n') {
+				break;
+			case '\n':
 				if (buf == '\r') {
 					out.write('\n');
 					lastw = i + 1;
@@ -143,12 +124,14 @@ public class AutoLFOutputStream extends OutputStream {
 					}
 					lastw = i + 1;
 				}
-			} else {
+				break;
+			default:
 				if (buf == '\r') {
 					out.write('\r');
 					lastw = i;
 				}
 				buf = -1;
+				break;
 			}
 		}
 		if (lastw < off + len) {
@@ -173,6 +156,9 @@ public class AutoLFOutputStream extends OutputStream {
 	private void decideMode() throws IOException {
 		if (detectBinary) {
 			isBinary = RawText.isBinary(binbuf, binbufcnt);
+			if (!isBinary) {
+				isBinary = RawText.isCrLfText(binbuf, binbufcnt);
+			}
 			detectBinary = false;
 		}
 		int cachedLen = binbufcnt;
@@ -180,6 +166,7 @@ public class AutoLFOutputStream extends OutputStream {
 		write(binbuf, 0, cachedLen);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void flush() throws IOException {
 		if (binbufcnt <= binbuf.length) {
@@ -188,6 +175,7 @@ public class AutoLFOutputStream extends OutputStream {
 		out.flush();
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public void close() throws IOException {
 		flush();

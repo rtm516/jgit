@@ -1,47 +1,16 @@
 /*
- * Copyright (C) 2015, Ivan Motsch <ivan.motsch@bsiag.com>
+ * Copyright (C) 2015, 2020 Ivan Motsch <ivan.motsch@bsiag.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.api;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.eclipse.jgit.lib.CoreConfig.EolStreamType.AUTO_CRLF;
 import static org.eclipse.jgit.lib.CoreConfig.EolStreamType.AUTO_LF;
 import static org.eclipse.jgit.lib.CoreConfig.EolStreamType.DIRECT;
@@ -53,7 +22,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 import org.eclipse.jgit.lib.CoreConfig.EolStreamType;
@@ -90,16 +58,20 @@ public class EolStreamTypeUtilTest {
 		testCheckout(TEXT_LF, AUTO_LF, "\r", "\r");
 		testCheckout(TEXT_LF, AUTO_LF, "\n", "\n");
 
-		testCheckout(TEXT_LF, AUTO_LF, "\r\n", "\n");
+		testCheckout(TEXT_LF, null, "\r\n", "\n");
+		testCheckout(null, AUTO_LF, "\r\n", "\r\n");
 		testCheckout(TEXT_LF, AUTO_LF, "\n\r", "\n\r");
 
-		testCheckout(TEXT_LF, AUTO_LF, "\n\r\n", "\n\n");
-		testCheckout(TEXT_LF, AUTO_LF, "\r\n\r", "\n\r");
+		testCheckout(TEXT_LF, null, "\n\r\n", "\n\n");
+		testCheckout(null, AUTO_LF, "\n\r\n", "\n\r\n");
+		testCheckout(TEXT_LF, null, "\r\n\r", "\n\r");
+		testCheckout(null, AUTO_LF, "\r\n\r", "\r\n\r");
 
 		testCheckout(TEXT_LF, AUTO_LF, "a\nb\n", "a\nb\n");
 		testCheckout(TEXT_LF, AUTO_LF, "a\rb\r", "a\rb\r");
 		testCheckout(TEXT_LF, AUTO_LF, "a\n\rb\n\r", "a\n\rb\n\r");
-		testCheckout(TEXT_LF, AUTO_LF, "a\r\nb\r\n", "a\nb\n");
+		testCheckout(TEXT_LF, null, "a\r\nb\r\n", "a\nb\n");
+		testCheckout(null, AUTO_LF, "a\r\nb\r\n", "a\r\nb\r\n");
 	}
 
 	@Test
@@ -150,49 +122,52 @@ public class EolStreamTypeUtilTest {
 			EolStreamType streamTypeWithBinaryCheck, String output,
 			String expectedConversion) throws Exception {
 		ByteArrayOutputStream b;
-		byte[] outputBytes = output.getBytes(StandardCharsets.UTF_8);
-		byte[] expectedConversionBytes = expectedConversion
-				.getBytes(StandardCharsets.UTF_8);
+		byte[] outputBytes = output.getBytes(UTF_8);
+		byte[] expectedConversionBytes = expectedConversion.getBytes(UTF_8);
 
-		// test using output text and assuming it was declared TEXT
-		b = new ByteArrayOutputStream();
-		try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
-				streamTypeText)) {
-			out.write(outputBytes);
+		if (streamTypeText != null) {
+			// test using output text and assuming it was declared TEXT
+			b = new ByteArrayOutputStream();
+			try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
+					streamTypeText)) {
+				out.write(outputBytes);
+			}
+			assertArrayEquals(expectedConversionBytes, b.toByteArray());
 		}
-		assertArrayEquals(expectedConversionBytes, b.toByteArray());
-
-		// test using ouput text and assuming it was declared AUTO, using binary
-		// detection
-		b = new ByteArrayOutputStream();
-		try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
-				streamTypeWithBinaryCheck)) {
-			out.write(outputBytes);
+		if (streamTypeWithBinaryCheck != null) {
+			// test using output text and assuming it was declared AUTO, using
+			// binary detection
+			b = new ByteArrayOutputStream();
+			try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
+					streamTypeWithBinaryCheck)) {
+				out.write(outputBytes);
+			}
+			assertArrayEquals(expectedConversionBytes, b.toByteArray());
 		}
-		assertArrayEquals(expectedConversionBytes, b.toByteArray());
-
 		// now pollute output text with some binary bytes
 		outputBytes = extendWithBinaryData(outputBytes);
 		expectedConversionBytes = extendWithBinaryData(expectedConversionBytes);
 
-		// again, test using output text and assuming it was declared TEXT
-		b = new ByteArrayOutputStream();
-		try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
-				streamTypeText)) {
-			out.write(outputBytes);
+		if (streamTypeText != null) {
+			// again, test using output text and assuming it was declared TEXT
+			b = new ByteArrayOutputStream();
+			try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
+					streamTypeText)) {
+				out.write(outputBytes);
+			}
+			assertArrayEquals(expectedConversionBytes, b.toByteArray());
 		}
-		assertArrayEquals(expectedConversionBytes, b.toByteArray());
-
-		// again, test using ouput text and assuming it was declared AUTO, using
-		// binary
-		// detection
-		b = new ByteArrayOutputStream();
-		try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
-				streamTypeWithBinaryCheck)) {
-			out.write(outputBytes);
+		if (streamTypeWithBinaryCheck != null) {
+			// again, test using output text and assuming it was declared AUTO,
+			// using binary detection
+			b = new ByteArrayOutputStream();
+			try (OutputStream out = EolStreamTypeUtil.wrapOutputStream(b,
+					streamTypeWithBinaryCheck)) {
+				out.write(outputBytes);
+			}
+			// expect no conversion
+			assertArrayEquals(outputBytes, b.toByteArray());
 		}
-		// expect no conversion
-		assertArrayEquals(outputBytes, b.toByteArray());
 	}
 
 	@Test
@@ -278,9 +253,8 @@ public class EolStreamTypeUtilTest {
 	private void testCheckin(EolStreamType streamTypeText,
 			EolStreamType streamTypeWithBinaryCheck, String input,
 			String expectedConversion) throws Exception {
-		byte[] inputBytes = input.getBytes(StandardCharsets.UTF_8);
-		byte[] expectedConversionBytes = expectedConversion
-				.getBytes(StandardCharsets.UTF_8);
+		byte[] inputBytes = input.getBytes(UTF_8);
+		byte[] expectedConversionBytes = expectedConversion.getBytes(UTF_8);
 
 		// test using input text and assuming it was declared TEXT
 		try (InputStream in = EolStreamTypeUtil.wrapInputStream(

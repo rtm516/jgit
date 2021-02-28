@@ -4,60 +4,32 @@
  * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com>
  * Copyright (C) 2008, Robin Rosenberg <robin.rosenberg@dewire.com>
  * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * Copyright (C) 2010, Mathias Kinzler <mathias.kinzler@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2010, Mathias Kinzler <mathias.kinzler@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.lib;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.HOURS;
+import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.eclipse.jgit.util.FileUtils.pathToString;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -65,11 +37,15 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import org.eclipse.jgit.api.MergeCommand.FastForwardMode;
 import org.eclipse.jgit.errors.ConfigInvalidException;
@@ -77,21 +53,27 @@ import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.MockSystemReader;
 import org.eclipse.jgit.merge.MergeConfig;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
+import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.util.FS;
 import org.eclipse.jgit.util.SystemReader;
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 
 /**
  * Test reading of git config
  */
+@SuppressWarnings("boxing")
 public class ConfigTest {
+	// A non-ASCII whitespace character: U+2002 EN QUAD.
+	private static final char WS = '\u2002';
 
-	@Rule
-	public ExpectedException expectedEx = ExpectedException.none();
+	private static final String REFS_ORIGIN = "+refs/heads/*:refs/remotes/origin/*";
+
+	private static final String REFS_UPSTREAM = "+refs/heads/*:refs/remotes/upstream/*";
+
+	private static final String REFS_BACKUP = "+refs/heads/*:refs/remotes/backup/*";
 
 	@Rule
 	public TemporaryFolder tmp = new TemporaryFolder();
@@ -139,7 +121,7 @@ public class ConfigTest {
 	@Test
 	public void test005_PutGetStringList() {
 		Config c = new Config();
-		final LinkedList<String> values = new LinkedList<String>();
+		final LinkedList<String> values = new LinkedList<>();
 		values.add("value1");
 		values.add("value2");
 		c.setStringList("my", null, "somename", values);
@@ -323,7 +305,7 @@ public class ConfigTest {
 		assertFalse(c.getBoolean("s", "b", true));
 	}
 
-	static enum TestEnum {
+	enum TestEnum {
 		ONE_TWO;
 	}
 
@@ -665,28 +647,6 @@ public class ConfigTest {
 		assertTrue("Subsection should contain \"B\"", names.contains("B"));
 	}
 
-	@Test
-	public void testQuotingForSubSectionNames() {
-		String resultPattern = "[testsection \"{0}\"]\n\ttestname = testvalue\n";
-		String result;
-
-		Config config = new Config();
-		config.setString("testsection", "testsubsection", "testname",
-				"testvalue");
-
-		result = MessageFormat.format(resultPattern, "testsubsection");
-		assertEquals(result, config.toText());
-		config.clear();
-
-		config.setString("testsection", "#quotable", "testname", "testvalue");
-		result = MessageFormat.format(resultPattern, "#quotable");
-		assertEquals(result, config.toText());
-		config.clear();
-
-		config.setString("testsection", "with\"quote", "testname", "testvalue");
-		result = MessageFormat.format(resultPattern, "with\\\"quote");
-		assertEquals(result, config.toText());
-	}
 
 	@Test
 	public void testNoFinalNewline() throws ConfigInvalidException {
@@ -708,11 +668,7 @@ public class ConfigTest {
 
 		assertEquals("", c.getString("a", null, "y"));
 		assertArrayEquals(new String[]{""}, c.getStringList("a", null, "y"));
-		try {
-			c.getInt("a", null, "y", 1);
-		} catch (IllegalArgumentException e) {
-			assertEquals("Invalid integer value: a.y=", e.getMessage());
-		}
+		assertEquals(1, c.getInt("a", null, "y", 1));
 
 		assertNull(c.getString("a", null, "z"));
 		assertArrayEquals(new String[]{}, c.getStringList("a", null, "z"));
@@ -729,11 +685,7 @@ public class ConfigTest {
 
 		assertNull(c.getString("a", null, "y"));
 		assertArrayEquals(new String[]{null}, c.getStringList("a", null, "y"));
-		try {
-			c.getInt("a", null, "y", 1);
-		} catch (IllegalArgumentException e) {
-			assertEquals("Invalid integer value: a.y=", e.getMessage());
-		}
+		assertEquals(1, c.getInt("a", null, "y", 1));
 
 		assertNull(c.getString("a", null, "z"));
 		assertArrayEquals(new String[]{}, c.getStringList("a", null, "z"));
@@ -766,24 +718,22 @@ public class ConfigTest {
 	}
 
 	@Test
-	public void testIncludeInvalidName() throws ConfigInvalidException {
-		expectedEx.expect(ConfigInvalidException.class);
-		expectedEx.expectMessage(JGitText.get().invalidLineInConfigFile);
-		parse("[include]\nbar\n");
+	public void testIncludeInvalidName() {
+		assertThrows(JGitText.get().invalidLineInConfigFile,
+				ConfigInvalidException.class, () -> parse("[include]\nbar\n"));
 	}
 
 	@Test
-	public void testIncludeNoValue() throws ConfigInvalidException {
-		expectedEx.expect(ConfigInvalidException.class);
-		expectedEx.expectMessage(JGitText.get().invalidLineInConfigFile);
-		parse("[include]\npath\n");
+	public void testIncludeNoValue() {
+		assertThrows(JGitText.get().invalidLineInConfigFile,
+				ConfigInvalidException.class, () -> parse("[include]\npath\n"));
 	}
 
 	@Test
-	public void testIncludeEmptyValue() throws ConfigInvalidException {
-		expectedEx.expect(ConfigInvalidException.class);
-		expectedEx.expectMessage(JGitText.get().invalidLineInConfigFile);
-		parse("[include]\npath=\n");
+	public void testIncludeEmptyValue() {
+		assertThrows(JGitText.get().invalidLineInConfigFile,
+				ConfigInvalidException.class,
+				() -> parse("[include]\npath=\n"));
 	}
 
 	@Test
@@ -818,41 +768,400 @@ public class ConfigTest {
 	@Test
 	public void testIncludeTooManyRecursions() throws IOException {
 		File config = tmp.newFile("config");
-		String include = "[include]\npath=" + config.toPath() + "\n";
-		Files.write(config.toPath(), include.getBytes());
-		FileBasedConfig fbConfig = new FileBasedConfig(null, config,
-				FS.DETECTED);
+		String include = "[include]\npath=" + pathToString(config) + "\n";
+		Files.write(config.toPath(), include.getBytes(UTF_8));
 		try {
-			fbConfig.load();
+			loadConfig(config);
 			fail();
 		} catch (ConfigInvalidException cie) {
-			assertEquals(JGitText.get().tooManyIncludeRecursions,
-					cie.getCause().getMessage());
+			for (Throwable t = cie; t != null; t = t.getCause()) {
+				if (t.getMessage()
+						.equals(JGitText.get().tooManyIncludeRecursions)) {
+					return;
+				}
+			}
+			fail("Expected to find expected exception message: "
+					+ JGitText.get().tooManyIncludeRecursions);
 		}
 	}
 
 	@Test
-	public void testInclude() throws IOException, ConfigInvalidException {
+	public void testIncludeIsNoop() throws IOException, ConfigInvalidException {
 		File config = tmp.newFile("config");
-		File more = tmp.newFile("config.more");
-		File other = tmp.newFile("config.other");
 
 		String fooBar = "[foo]\nbar=true\n";
-		String includeMore = "[include]\npath=" + more.toPath() + "\n";
-		String includeOther = "path=" + other.toPath() + "\n";
-		String fooPlus = fooBar + includeMore + includeOther;
-		Files.write(config.toPath(), fooPlus.getBytes());
+		Files.write(config.toPath(), fooBar.getBytes(UTF_8));
 
-		String fooMore = "[foo]\nmore=bar\n";
-		Files.write(more.toPath(), fooMore.getBytes());
+		Config parsed = parse("[include]\npath=" + pathToString(config) + "\n");
+		assertFalse(parsed.getBoolean("foo", "bar", false));
+	}
 
-		String otherMore = "[other]\nmore=bar\n";
-		Files.write(other.toPath(), otherMore.getBytes());
+	@Test
+	public void testIncludeCaseInsensitiveSection()
+			throws IOException, ConfigInvalidException {
+		File included = tmp.newFile("included");
+		String content = "[foo]\nbar=true\n";
+		Files.write(included.toPath(), content.getBytes(UTF_8));
 
-		Config parsed = parse("[include]\npath=" + config.toPath() + "\n");
-		assertTrue(parsed.getBoolean("foo", "bar", false));
-		assertEquals("bar", parsed.getString("foo", null, "more"));
-		assertEquals("bar", parsed.getString("other", null, "more"));
+		File config = tmp.newFile("config");
+		content = "[Include]\npath=" + pathToString(included) + "\n";
+		Files.write(config.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(config);
+		assertTrue(fbConfig.getBoolean("foo", "bar", false));
+	}
+
+	@Test
+	public void testIncludeCaseInsensitiveKey()
+			throws IOException, ConfigInvalidException {
+		File included = tmp.newFile("included");
+		String content = "[foo]\nbar=true\n";
+		Files.write(included.toPath(), content.getBytes(UTF_8));
+
+		File config = tmp.newFile("config");
+		content = "[include]\nPath=" + pathToString(included) + "\n";
+		Files.write(config.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(config);
+		assertTrue(fbConfig.getBoolean("foo", "bar", false));
+	}
+
+	@Test
+	public void testIncludeExceptionContainsLine() {
+		try {
+			parse("[include]\npath=\n");
+			fail("Expected ConfigInvalidException");
+		} catch (ConfigInvalidException e) {
+			assertTrue(
+					"Expected to find the problem line in the exception message",
+					e.getMessage().contains("include.path"));
+		}
+	}
+
+	@Test
+	public void testIncludeExceptionContainsFile() throws IOException {
+		File included = tmp.newFile("included");
+		String includedPath = pathToString(included);
+		String content = "[include]\npath=\n";
+		Files.write(included.toPath(), content.getBytes(UTF_8));
+
+		File config = tmp.newFile("config");
+		String include = "[include]\npath=" + includedPath + "\n";
+		Files.write(config.toPath(), include.getBytes(UTF_8));
+		try {
+			loadConfig(config);
+			fail("Expected ConfigInvalidException");
+		} catch (ConfigInvalidException e) {
+			// Check that there is some exception in the chain that contains
+			// includedPath
+			for (Throwable t = e; t != null; t = t.getCause()) {
+				if (t.getMessage().contains(includedPath)) {
+					return;
+				}
+			}
+			fail("Expected to find the path in the exception message: "
+					+ includedPath);
+		}
+	}
+
+	@Test
+	public void testIncludeSetValueMustNotTouchIncludedLines1()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = createAllTypesSampleContent("Alice Parker", false, 11,
+				21, 31, CoreConfig.AutoCRLF.FALSE,
+				"+refs/heads/*:refs/remotes/origin/*") + "\n[include]\npath="
+				+ pathToString(includedFile);
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsIncluded(fbConfig, REFS_ORIGIN, REFS_UPSTREAM);
+		assertSections(fbConfig, "user", "core", "remote", "include");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsIncluded(config, REFS_BACKUP, REFS_UPSTREAM);
+			assertSections(fbConfig, "user", "core", "remote", "include");
+		});
+	}
+
+	@Test
+	public void testIncludeSetValueMustNotTouchIncludedLines2()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = "[include]\npath=" + pathToString(includedFile) + "\n"
+				+ createAllTypesSampleContent("Alice Parker", false, 11, 21, 31,
+						CoreConfig.AutoCRLF.FALSE,
+						"+refs/heads/*:refs/remotes/origin/*");
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsConfig(fbConfig, REFS_UPSTREAM, REFS_ORIGIN);
+		assertSections(fbConfig, "include", "user", "core", "remote");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsNew(config, REFS_UPSTREAM, REFS_BACKUP);
+			assertSections(fbConfig, "include", "user", "core", "remote");
+		});
+	}
+
+	@Test
+	public void testIncludeSetValueOnFileWithJustContainsInclude()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = "[include]\npath=" + pathToString(includedFile);
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsIncluded(fbConfig, REFS_UPSTREAM);
+		assertSections(fbConfig, "include", "user", "core", "remote");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsNew(config, REFS_UPSTREAM, REFS_BACKUP);
+			assertSections(fbConfig, "include", "user", "core", "remote");
+		});
+	}
+
+	@Test
+	public void testIncludeSetValueOnFileWithJustEmptySection1()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = "[user]\n[include]\npath="
+				+ pathToString(includedFile);
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsIncluded(fbConfig, REFS_UPSTREAM);
+		assertSections(fbConfig, "user", "include", "core", "remote");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsNewWithName(config, "Alice Muller", REFS_UPSTREAM,
+					REFS_BACKUP);
+			assertSections(fbConfig, "user", "include", "core", "remote");
+		});
+	}
+
+	@Test
+	public void testIncludeSetValueOnFileWithJustEmptySection2()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = "[include]\npath=" + pathToString(includedFile)
+				+ "\n[user]";
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsIncluded(fbConfig, REFS_UPSTREAM);
+		assertSections(fbConfig, "include", "user", "core", "remote");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsNew(config, REFS_UPSTREAM, REFS_BACKUP);
+			assertSections(fbConfig, "include", "user", "core", "remote");
+		});
+	}
+
+	@Test
+	public void testIncludeSetValueOnFileWithJustExistingSection1()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = "[user]\nemail=alice@home\n[include]\npath="
+				+ pathToString(includedFile);
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsIncluded(fbConfig, REFS_UPSTREAM);
+		assertSections(fbConfig, "user", "include", "core", "remote");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsNewWithName(config, "Alice Muller", REFS_UPSTREAM,
+					REFS_BACKUP);
+			assertSections(fbConfig, "user", "include", "core", "remote");
+		});
+	}
+
+	@Test
+	public void testIncludeSetValueOnFileWithJustExistingSection2()
+			throws IOException, ConfigInvalidException {
+		File includedFile = createAllTypesIncludedContent();
+
+		File configFile = tmp.newFile("config");
+		String content = "[include]\npath=" + pathToString(includedFile)
+				+ "\n[user]\nemail=alice@home\n";
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+		assertValuesAsIncluded(fbConfig, REFS_UPSTREAM);
+		assertSections(fbConfig, "include", "user", "core", "remote");
+
+		setAllValuesNew(fbConfig);
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertValuesAsNew(config, REFS_UPSTREAM, REFS_BACKUP);
+			assertSections(fbConfig, "include", "user", "core", "remote");
+		});
+	}
+
+	@Test
+	public void testIncludeUnsetSectionMustNotTouchIncludedLines()
+			throws IOException, ConfigInvalidException {
+		File includedFile = tmp.newFile("included");
+		RefSpec includedRefSpec = new RefSpec(REFS_UPSTREAM);
+		String includedContent = "[remote \"origin\"]\n" + "fetch="
+				+ includedRefSpec;
+		Files.write(includedFile.toPath(), includedContent.getBytes(UTF_8));
+
+		File configFile = tmp.newFile("config");
+		RefSpec refSpec = new RefSpec(REFS_ORIGIN);
+		String content = "[include]\npath=" + pathToString(includedFile) + "\n"
+				+ "[remote \"origin\"]\n" + "fetch=" + refSpec;
+		Files.write(configFile.toPath(), content.getBytes(UTF_8));
+
+		FileBasedConfig fbConfig = loadConfig(configFile);
+
+		Consumer<FileBasedConfig> assertion = config -> {
+			assertEquals(Arrays.asList(includedRefSpec, refSpec),
+					config.getRefSpecs("remote", "origin", "fetch"));
+		};
+		assertion.accept(fbConfig);
+
+		fbConfig.unsetSection("remote", "origin");
+		assertValuesAsIsSaveLoad(fbConfig, config -> {
+			assertEquals(Collections.singletonList(includedRefSpec),
+					config.getRefSpecs("remote", "origin", "fetch"));
+		});
+	}
+
+	private File createAllTypesIncludedContent() throws IOException {
+		File includedFile = tmp.newFile("included");
+		String includedContent = createAllTypesSampleContent("Alice Muller",
+				true, 10, 20, 30, CoreConfig.AutoCRLF.TRUE,
+				"+refs/heads/*:refs/remotes/upstream/*");
+		Files.write(includedFile.toPath(), includedContent.getBytes(UTF_8));
+		return includedFile;
+	}
+
+	private static void assertValuesAsIsSaveLoad(FileBasedConfig fbConfig,
+			Consumer<FileBasedConfig> assertion)
+			throws IOException, ConfigInvalidException {
+		assertion.accept(fbConfig);
+
+		fbConfig.save();
+		assertion.accept(fbConfig);
+
+		fbConfig = loadConfig(fbConfig.getFile());
+		assertion.accept(fbConfig);
+	}
+
+	private static void setAllValuesNew(Config config) {
+		config.setString("user", null, "name", "Alice Bauer");
+		config.setBoolean("core", null, "fileMode", false);
+		config.setInt("core", null, "deltaBaseCacheLimit", 12);
+		config.setLong("core", null, "packedGitLimit", 22);
+		config.setLong("core", null, "repositoryCacheExpireAfter", 32);
+		config.setEnum("core", null, "autocrlf", CoreConfig.AutoCRLF.FALSE);
+		config.setString("remote", "origin", "fetch",
+				"+refs/heads/*:refs/remotes/backup/*");
+	}
+
+	private static void assertValuesAsIncluded(Config config, String... refs) {
+		assertAllTypesSampleContent("Alice Muller", true, 10, 20, 30,
+				CoreConfig.AutoCRLF.TRUE, config, refs);
+	}
+
+	private static void assertValuesAsConfig(Config config, String... refs) {
+		assertAllTypesSampleContent("Alice Parker", false, 11, 21, 31,
+				CoreConfig.AutoCRLF.FALSE, config, refs);
+	}
+
+	private static void assertValuesAsNew(Config config, String... refs) {
+		assertValuesAsNewWithName(config, "Alice Bauer", refs);
+	}
+
+	private static void assertValuesAsNewWithName(Config config, String name,
+			String... refs) {
+		assertAllTypesSampleContent(name, false, 12, 22, 32,
+				CoreConfig.AutoCRLF.FALSE, config, refs);
+	}
+
+	private static void assertSections(Config config, String... sections) {
+		assertEquals(Arrays.asList(sections),
+				new ArrayList<>(config.getSections()));
+	}
+
+	private static String createAllTypesSampleContent(String name,
+			boolean fileMode, int deltaBaseCacheLimit, long packedGitLimit,
+			long repositoryCacheExpireAfter, CoreConfig.AutoCRLF autoCRLF,
+			String fetchRefSpec) {
+		final StringBuilder builder = new StringBuilder();
+		builder.append("[user]\n");
+		builder.append("name=");
+		builder.append(name);
+		builder.append("\n");
+
+		builder.append("[core]\n");
+		builder.append("fileMode=");
+		builder.append(fileMode);
+		builder.append("\n");
+
+		builder.append("deltaBaseCacheLimit=");
+		builder.append(deltaBaseCacheLimit);
+		builder.append("\n");
+
+		builder.append("packedGitLimit=");
+		builder.append(packedGitLimit);
+		builder.append("\n");
+
+		builder.append("repositoryCacheExpireAfter=");
+		builder.append(repositoryCacheExpireAfter);
+		builder.append("\n");
+
+		builder.append("autocrlf=");
+		builder.append(autoCRLF.name());
+		builder.append("\n");
+
+		builder.append("[remote \"origin\"]\n");
+		builder.append("fetch=");
+		builder.append(fetchRefSpec);
+		builder.append("\n");
+		return builder.toString();
+	}
+
+	private static void assertAllTypesSampleContent(String name,
+			boolean fileMode, int deltaBaseCacheLimit, long packedGitLimit,
+			long repositoryCacheExpireAfter, CoreConfig.AutoCRLF autoCRLF,
+			Config config, String... fetchRefSpecs) {
+		assertEquals(name, config.getString("user", null, "name"));
+		assertEquals(fileMode,
+				config.getBoolean("core", "fileMode", !fileMode));
+		assertEquals(deltaBaseCacheLimit,
+				config.getInt("core", "deltaBaseCacheLimit", -1));
+		assertEquals(packedGitLimit,
+				config.getLong("core", "packedGitLimit", -1));
+		assertEquals(repositoryCacheExpireAfter, config.getTimeUnit("core",
+				null, "repositoryCacheExpireAfter", -1, MILLISECONDS));
+		assertEquals(autoCRLF, config.getEnum("core", null, "autocrlf",
+				CoreConfig.AutoCRLF.INPUT));
+		final List<RefSpec> refspecs = new ArrayList<>();
+		for (String fetchRefSpec : fetchRefSpecs) {
+			refspecs.add(new RefSpec(fetchRefSpec));
+		}
+
+		assertEquals(refspecs, config.getRefSpecs("remote", "origin", "fetch"));
 	}
 
 	private static void assertReadLong(long exp) throws ConfigInvalidException {
@@ -865,12 +1174,12 @@ public class ConfigTest {
 		assertEquals(exp, c.getLong("s", null, "a", 0L));
 	}
 
-	private static Config parse(final String content)
+	private static Config parse(String content)
 			throws ConfigInvalidException {
 		return parse(content, null);
 	}
 
-	private static Config parse(final String content, Config baseConfig)
+	private static Config parse(String content, Config baseConfig)
 			throws ConfigInvalidException {
 		final Config c = new Config(baseConfig);
 		c.fromText(content);
@@ -879,8 +1188,18 @@ public class ConfigTest {
 
 	@Test
 	public void testTimeUnit() throws ConfigInvalidException {
+		assertEquals(0, parseTime("0", NANOSECONDS));
+		assertEquals(2, parseTime("2ns", NANOSECONDS));
+		assertEquals(200, parseTime("200 nanoseconds", NANOSECONDS));
+
+		assertEquals(0, parseTime("0", MICROSECONDS));
+		assertEquals(2, parseTime("2us", MICROSECONDS));
+		assertEquals(2, parseTime("2000 nanoseconds", MICROSECONDS));
+		assertEquals(200, parseTime("200 microseconds", MICROSECONDS));
+
 		assertEquals(0, parseTime("0", MILLISECONDS));
 		assertEquals(2, parseTime("2ms", MILLISECONDS));
+		assertEquals(2, parseTime("2000microseconds", MILLISECONDS));
 		assertEquals(200, parseTime("200 milliseconds", MILLISECONDS));
 
 		assertEquals(0, parseTime("0s", SECONDS));
@@ -945,24 +1264,274 @@ public class ConfigTest {
 	}
 
 	@Test
-	public void testTimeUnitInvalid() throws ConfigInvalidException {
-		expectedEx.expect(IllegalArgumentException.class);
-		expectedEx
-				.expectMessage("Invalid time unit value: a.a=1 monttthhh");
-		parseTime("1 monttthhh", DAYS);
+	public void testTimeUnitInvalid() {
+		assertThrows("Invalid time unit value: a.a=1 monttthhh",
+				IllegalArgumentException.class,
+				() -> parseTime("1 monttthhh", DAYS));
 	}
 
 	@Test
 	public void testTimeUnitInvalidWithSection() throws ConfigInvalidException {
 		Config c = parse("[a \"b\"]\na=1 monttthhh\n");
-		expectedEx.expect(IllegalArgumentException.class);
-		expectedEx.expectMessage("Invalid time unit value: a.b.a=1 monttthhh");
-		c.getTimeUnit("a", "b", "a", 0, DAYS);
+		assertThrows("Invalid time unit value: a.b.a=1 monttthhh",
+				IllegalArgumentException.class,
+				() -> c.getTimeUnit("a", "b", "a", 0, DAYS));
 	}
 
 	@Test
-	public void testTimeUnitNegative() throws ConfigInvalidException {
-		expectedEx.expect(IllegalArgumentException.class);
-		parseTime("-1", MILLISECONDS);
+	public void testTimeUnitNegative() {
+		assertThrows(IllegalArgumentException.class,
+				() -> parseTime("-1", MILLISECONDS));
+	}
+
+	@Test
+	public void testEscapeSpacesOnly() throws ConfigInvalidException {
+		// Empty string is read back as null, so this doesn't round-trip.
+		assertEquals("", Config.escapeValue(""));
+
+		assertValueRoundTrip(" ", "\" \"");
+		assertValueRoundTrip("  ", "\"  \"");
+	}
+
+	@Test
+	public void testEscapeLeadingSpace() throws ConfigInvalidException {
+		assertValueRoundTrip("x", "x");
+		assertValueRoundTrip(" x", "\" x\"");
+		assertValueRoundTrip("  x", "\"  x\"");
+	}
+
+	@Test
+	public void testEscapeTrailingSpace() throws ConfigInvalidException {
+		assertValueRoundTrip("x", "x");
+		assertValueRoundTrip("x  ","\"x  \"");
+		assertValueRoundTrip("x ","\"x \"");
+	}
+
+	@Test
+	public void testEscapeLeadingAndTrailingSpace()
+			throws ConfigInvalidException {
+		assertValueRoundTrip(" x ", "\" x \"");
+		assertValueRoundTrip("  x ", "\"  x \"");
+		assertValueRoundTrip(" x  ", "\" x  \"");
+		assertValueRoundTrip("  x  ", "\"  x  \"");
+	}
+
+	@Test
+	public void testNoEscapeInternalSpaces() throws ConfigInvalidException {
+		assertValueRoundTrip("x y");
+		assertValueRoundTrip("x  y");
+		assertValueRoundTrip("x  y");
+		assertValueRoundTrip("x  y   z");
+		assertValueRoundTrip("x " + WS + " y");
+	}
+
+	@Test
+	public void testNoEscapeSpecialCharacters() throws ConfigInvalidException {
+		assertValueRoundTrip("x\\y", "x\\\\y");
+		assertValueRoundTrip("x\"y", "x\\\"y");
+		assertValueRoundTrip("x\ny", "x\\ny");
+		assertValueRoundTrip("x\ty", "x\\ty");
+		assertValueRoundTrip("x\by", "x\\by");
+	}
+
+	@Test
+	public void testParseLiteralBackspace() throws ConfigInvalidException {
+		// This is round-tripped with an escape sequence by JGit, but C git writes
+		// it out as a literal backslash.
+		assertEquals("x\by", parseEscapedValue("x\by"));
+	}
+
+	@Test
+	public void testEscapeCommentCharacters() throws ConfigInvalidException {
+		assertValueRoundTrip("x#y", "\"x#y\"");
+		assertValueRoundTrip("x;y", "\"x;y\"");
+	}
+
+	@Test
+	public void testEscapeValueInvalidCharacters() {
+		assertIllegalArgumentException(() -> Config.escapeSubsection("x\0y"));
+	}
+
+	@Test
+	public void testEscapeSubsectionInvalidCharacters() {
+		assertIllegalArgumentException(() -> Config.escapeSubsection("x\ny"));
+		assertIllegalArgumentException(() -> Config.escapeSubsection("x\0y"));
+	}
+
+	@Test
+	public void testParseMultipleQuotedRegions() throws ConfigInvalidException {
+		assertEquals("b a z; \n", parseEscapedValue("b\" a\"\" z; \\n\""));
+	}
+
+	@Test
+	public void testParseComments() throws ConfigInvalidException {
+		assertEquals("baz", parseEscapedValue("baz; comment"));
+		assertEquals("baz", parseEscapedValue("baz# comment"));
+		assertEquals("baz", parseEscapedValue("baz ; comment"));
+		assertEquals("baz", parseEscapedValue("baz # comment"));
+
+		assertEquals("baz", parseEscapedValue("baz ; comment"));
+		assertEquals("baz", parseEscapedValue("baz # comment"));
+		assertEquals("baz", parseEscapedValue("baz " + WS + " ; comment"));
+		assertEquals("baz", parseEscapedValue("baz " + WS + " # comment"));
+
+		assertEquals("baz ", parseEscapedValue("\"baz \"; comment"));
+		assertEquals("baz ", parseEscapedValue("\"baz \"# comment"));
+		assertEquals("baz ", parseEscapedValue("\"baz \" ; comment"));
+		assertEquals("baz ", parseEscapedValue("\"baz \" # comment"));
+	}
+
+	@Test
+	public void testEscapeSubsection() throws ConfigInvalidException {
+		assertSubsectionRoundTrip("", "\"\"");
+		assertSubsectionRoundTrip("x", "\"x\"");
+		assertSubsectionRoundTrip(" x", "\" x\"");
+		assertSubsectionRoundTrip("x ", "\"x \"");
+		assertSubsectionRoundTrip(" x ", "\" x \"");
+		assertSubsectionRoundTrip("x y", "\"x y\"");
+		assertSubsectionRoundTrip("x  y", "\"x  y\"");
+		assertSubsectionRoundTrip("x\\y", "\"x\\\\y\"");
+		assertSubsectionRoundTrip("x\"y", "\"x\\\"y\"");
+
+		// Unlike for values, \b and \t are not escaped.
+		assertSubsectionRoundTrip("x\by", "\"x\by\"");
+		assertSubsectionRoundTrip("x\ty", "\"x\ty\"");
+	}
+
+	@Test
+	public void testParseInvalidValues() {
+		assertInvalidValue(JGitText.get().newlineInQuotesNotAllowed, "x\"\n\"y");
+		assertInvalidValue(JGitText.get().endOfFileInEscape, "x\\");
+		assertInvalidValue(
+				MessageFormat.format(JGitText.get().badEscape, 'q'), "x\\q");
+	}
+
+	@Test
+	public void testParseInvalidSubsections() {
+		assertInvalidSubsection(
+				JGitText.get().newlineInQuotesNotAllowed, "\"x\ny\"");
+	}
+
+	@Test
+	public void testDropBackslashFromInvalidEscapeSequenceInSubsectionName()
+			throws ConfigInvalidException {
+		assertEquals("x0", parseEscapedSubsection("\"x\\0\""));
+		assertEquals("xq", parseEscapedSubsection("\"x\\q\""));
+		// Unlike for values, \b, \n, and \t are not valid escape sequences.
+		assertEquals("xb", parseEscapedSubsection("\"x\\b\""));
+		assertEquals("xn", parseEscapedSubsection("\"x\\n\""));
+		assertEquals("xt", parseEscapedSubsection("\"x\\t\""));
+	}
+
+	@Test
+	public void testInvalidGroupHeader() {
+		assertThrows(JGitText.get().badGroupHeader,
+				ConfigInvalidException.class,
+				() -> parse("[foo \"bar\" ]\nfoo=bar\n"));
+	}
+
+	@Test
+	public void testCrLf() throws ConfigInvalidException {
+		assertEquals("true", parseEscapedValue("true\r\n"));
+	}
+
+	@Test
+	public void testLfContinuation() throws ConfigInvalidException {
+		assertEquals("true", parseEscapedValue("tr\\\nue"));
+	}
+
+	@Test
+	public void testCrCharContinuation() {
+		assertThrows("Bad escape: \\u000d", ConfigInvalidException.class,
+				() -> parseEscapedValue("tr\\\rue"));
+	}
+
+	@Test
+	public void testCrEOFContinuation() {
+		assertThrows("Bad escape: \\u000d", ConfigInvalidException.class,
+				() -> parseEscapedValue("tr\\\r"));
+	}
+
+	@Test
+	public void testCrLfContinuation() throws ConfigInvalidException {
+		assertEquals("true", parseEscapedValue("tr\\\r\nue"));
+	}
+
+	@Test
+	public void testWhitespaceContinuation() throws ConfigInvalidException {
+		assertEquals("tr   ue", parseEscapedValue("tr \\\n  ue"));
+		assertEquals("tr   ue", parseEscapedValue("tr \\\r\n  ue"));
+	}
+
+	private static void assertValueRoundTrip(String value)
+			throws ConfigInvalidException {
+		assertValueRoundTrip(value, value);
+	}
+
+	private static void assertValueRoundTrip(String value, String expectedEscaped)
+			throws ConfigInvalidException {
+		String escaped = Config.escapeValue(value);
+		assertEquals("escape failed;", expectedEscaped, escaped);
+		assertEquals("parse failed;", value, parseEscapedValue(escaped));
+	}
+
+	private static String parseEscapedValue(String escapedValue)
+			throws ConfigInvalidException {
+		String text = "[foo]\nbar=" + escapedValue;
+		Config c = parse(text);
+		return c.getString("foo", null, "bar");
+	}
+
+	private static void assertInvalidValue(String expectedMessage,
+			String escapedValue) {
+		try {
+			parseEscapedValue(escapedValue);
+			fail("expected ConfigInvalidException");
+		} catch (ConfigInvalidException e) {
+			assertEquals(expectedMessage, e.getMessage());
+		}
+	}
+
+	private static void assertSubsectionRoundTrip(String subsection,
+			String expectedEscaped) throws ConfigInvalidException {
+		String escaped = Config.escapeSubsection(subsection);
+		assertEquals("escape failed;", expectedEscaped, escaped);
+		assertEquals("parse failed;", subsection, parseEscapedSubsection(escaped));
+	}
+
+	private static String parseEscapedSubsection(String escapedSubsection)
+			throws ConfigInvalidException {
+		String text = "[foo " + escapedSubsection + "]\nbar = value";
+		Config c = parse(text);
+		Set<String> subsections = c.getSubsections("foo");
+		assertEquals("only one section", 1, subsections.size());
+		return subsections.iterator().next();
+	}
+
+	private static void assertIllegalArgumentException(Runnable r) {
+		try {
+			r.run();
+			fail("expected IllegalArgumentException");
+		} catch (IllegalArgumentException e) {
+			// Expected.
+		}
+	}
+
+	private static void assertInvalidSubsection(String expectedMessage,
+			String escapedSubsection) {
+		try {
+			parseEscapedSubsection(escapedSubsection);
+			fail("expected ConfigInvalidException");
+		} catch (ConfigInvalidException e) {
+			assertEquals(expectedMessage, e.getMessage());
+		}
+	}
+
+	private static FileBasedConfig loadConfig(File file)
+			throws IOException, ConfigInvalidException {
+		final FileBasedConfig config = new FileBasedConfig(null, file,
+				FS.DETECTED);
+		config.load();
+		return config;
 	}
 }

@@ -1,48 +1,17 @@
 /*
- * Copyright (C) 2012 Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2012 Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.pgm;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeNoException;
 
@@ -58,7 +27,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -136,10 +104,6 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 				"git archive HEAD", db).outBytes();
 		assertArrayEquals(new String[] { "greeting" },
 				listTarEntries(result));
-	}
-
-	private static String shellQuote(String s) {
-		return "'" + s.replace("'", "'\\''") + "'";
 	}
 
 	@Test
@@ -348,7 +312,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 		commitBazAndFooSlashBar();
 		byte[] result = CLIGitCommand.executeRaw(
 				"git archive --prefix=x/ --format=zip master", db).outBytes();
-		String[] expect = { "x/baz", "x/foo/", "x/foo/bar" };
+		String[] expect = { "x/", "x/baz", "x/foo/", "x/foo/bar" };
 		String[] actual = listZipEntries(result);
 
 		Arrays.sort(expect);
@@ -361,7 +325,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 		commitBazAndFooSlashBar();
 		byte[] result = CLIGitCommand.executeRaw(
 				"git archive --prefix=x/ --format=tar master", db).outBytes();
-		String[] expect = { "x/baz", "x/foo/", "x/foo/bar" };
+		String[] expect = { "x/", "x/baz", "x/foo/", "x/foo/bar" };
 		String[] actual = listTarEntries(result);
 
 		Arrays.sort(expect);
@@ -380,7 +344,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 		commitFoo();
 		byte[] result = CLIGitCommand.executeRaw(
 				"git archive --prefix=x// --format=zip master", db).outBytes();
-		String[] expect = { "x//foo" };
+		String[] expect = { "x/", "x//foo" };
 		assertArrayEquals(expect, listZipEntries(result));
 	}
 
@@ -389,7 +353,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 		commitFoo();
 		byte[] result = CLIGitCommand.executeRaw(
 				"git archive --prefix=x// --format=tar master", db).outBytes();
-		String[] expect = { "x//foo" };
+		String[] expect = { "x/", "x//foo" };
 		assertArrayEquals(expect, listTarEntries(result));
 	}
 
@@ -529,7 +493,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 	@Test
 	public void testArchiveWithLongFilename() throws Exception {
 		StringBuilder filename = new StringBuilder();
-		List<String> l = new ArrayList<String>();
+		List<String> l = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
 			filename.append("1234567890/");
 			l.add(filename.toString());
@@ -542,14 +506,14 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 
 		byte[] result = CLIGitCommand.executeRaw(
 				"git archive --format=zip HEAD", db).outBytes();
-		assertArrayEquals(l.toArray(new String[l.size()]),
+		assertArrayEquals(l.toArray(new String[0]),
 				listZipEntries(result));
 	}
 
 	@Test
 	public void testTarWithLongFilename() throws Exception {
 		StringBuilder filename = new StringBuilder();
-		List<String> l = new ArrayList<String>();
+		List<String> l = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
 			filename.append("1234567890/");
 			l.add(filename.toString());
@@ -562,7 +526,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 
 		byte[] result = CLIGitCommand.executeRaw(
 				"git archive --format=tar HEAD", db).outBytes();
-		assertArrayEquals(l.toArray(new String[l.size()]),
+		assertArrayEquals(l.toArray(new String[0]),
 				listTarEntries(result));
 	}
 
@@ -610,7 +574,7 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 
 	private BufferedReader readFromProcess(Process proc) throws Exception {
 		return new BufferedReader(
-				new InputStreamReader(proc.getInputStream(), "UTF-8"));
+				new InputStreamReader(proc.getInputStream(), UTF_8));
 	}
 
 	private void grepForEntry(String name, String mode, String... cmdline)
@@ -632,16 +596,16 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 	}
 
 	private void assertMagic(long offset, byte[] magicBytes, File file) throws Exception {
-		BufferedInputStream in = new BufferedInputStream(
-				new FileInputStream(file));
-		try {
-			in.skip(offset);
+		try (BufferedInputStream in = new BufferedInputStream(
+				new FileInputStream(file))) {
+			if (offset > 0) {
+				long skipped = in.skip(offset);
+				assertEquals(offset, skipped);
+			}
 
 			byte[] actual = new byte[magicBytes.length];
 			in.read(actual);
 			assertArrayEquals(magicBytes, actual);
-		} finally {
-			in.close();
 		}
 	}
 
@@ -682,60 +646,54 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 	private void writeRaw(String filename, byte[] data)
 			throws IOException {
 		File path = new File(db.getWorkTree(), filename);
-		OutputStream out = new FileOutputStream(path);
-		try {
+		try (OutputStream out = new FileOutputStream(path)) {
 			out.write(data);
-		} finally {
-			out.close();
 		}
 	}
 
 	private static String[] listZipEntries(byte[] zipData) throws IOException {
-		List<String> l = new ArrayList<String>();
-		ZipInputStream in = new ZipInputStream(
-				new ByteArrayInputStream(zipData));
-
-		ZipEntry e;
-		while ((e = in.getNextEntry()) != null)
-			l.add(e.getName());
-		in.close();
-		return l.toArray(new String[l.size()]);
+		List<String> l = new ArrayList<>();
+		try (ZipInputStream in = new ZipInputStream(
+				new ByteArrayInputStream(zipData))) {
+			ZipEntry e;
+			while ((e = in.getNextEntry()) != null)
+				l.add(e.getName());
+		}
+		return l.toArray(new String[0]);
 	}
 
-	private static Future<Object> writeAsync(final OutputStream stream, final byte[] data) {
+	private static Future<Object> writeAsync(OutputStream stream, byte[] data) {
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 
-		return executor.submit(new Callable<Object>() {
-			public Object call() throws IOException {
-				try {
-					stream.write(data);
-					return null;
-				} finally {
-					stream.close();
-				}
+		return executor.submit(() -> {
+			try {
+				stream.write(data);
+				return null;
+			} finally {
+				stream.close();
 			}
 		});
 	}
 
 	private String[] listTarEntries(byte[] tarData) throws Exception {
-		List<String> l = new ArrayList<String>();
+		List<String> l = new ArrayList<>();
 		Process proc = spawnAssumingCommandPresent("tar", "tf", "-");
-		BufferedReader reader = readFromProcess(proc);
-		OutputStream out = proc.getOutputStream();
+		try (BufferedReader reader = readFromProcess(proc)) {
+			OutputStream out = proc.getOutputStream();
 
-		// Dump tarball to tar stdin in background
-		Future<?> writing = writeAsync(out, tarData);
+			// Dump tarball to tar stdin in background
+			Future<?> writing = writeAsync(out, tarData);
 
-		try {
-			String line;
-			while ((line = reader.readLine()) != null)
-				l.add(line);
+			try {
+				String line;
+				while ((line = reader.readLine()) != null)
+					l.add(line);
 
-			return l.toArray(new String[l.size()]);
-		} finally {
-			writing.get();
-			reader.close();
-			proc.destroy();
+				return l.toArray(new String[0]);
+			} finally {
+				writing.get();
+				proc.destroy();
+			}
 		}
 	}
 
@@ -749,13 +707,13 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 				continue;
 
 			// found!
-			List<String> l = new ArrayList<String>();
+			List<String> l = new ArrayList<>();
 			BufferedReader reader = new BufferedReader(
-					new InputStreamReader(in, "UTF-8"));
+					new InputStreamReader(in, UTF_8));
 			String line;
 			while ((line = reader.readLine()) != null)
 				l.add(line);
-			return l.toArray(new String[l.size()]);
+			return l.toArray(new String[0]);
 		}
 
 		// not found
@@ -764,22 +722,22 @@ public class ArchiveTest extends CLIRepositoryTestCase {
 
 	private String[] tarEntryContent(byte[] tarData, String path)
 			throws Exception {
-		List<String> l = new ArrayList<String>();
+		List<String> l = new ArrayList<>();
 		Process proc = spawnAssumingCommandPresent("tar", "Oxf", "-", path);
-		BufferedReader reader = readFromProcess(proc);
-		OutputStream out = proc.getOutputStream();
-		Future<?> writing = writeAsync(out, tarData);
+		try (BufferedReader reader = readFromProcess(proc)) {
+			OutputStream out = proc.getOutputStream();
+			Future<?> writing = writeAsync(out, tarData);
 
-		try {
-			String line;
-			while ((line = reader.readLine()) != null)
-				l.add(line);
+			try {
+				String line;
+				while ((line = reader.readLine()) != null)
+					l.add(line);
 
-			return l.toArray(new String[l.size()]);
-		} finally {
-			writing.get();
-			reader.close();
-			proc.destroy();
+				return l.toArray(new String[0]);
+			} finally {
+				writing.get();
+				proc.destroy();
+			}
 		}
 	}
 }

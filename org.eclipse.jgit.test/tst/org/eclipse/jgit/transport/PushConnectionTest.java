@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2015, Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2015, Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.transport;
@@ -51,21 +18,22 @@ import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.eclipse.jgit.errors.TransportException;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.eclipse.jgit.junit.TestRepository;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.transport.resolver.ReceivePackFactory;
-import org.eclipse.jgit.transport.resolver.ServiceNotAuthorizedException;
-import org.eclipse.jgit.transport.resolver.ServiceNotEnabledException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -76,6 +44,7 @@ public class PushConnectionTest {
 	private Object ctx = new Object();
 	private InMemoryRepository server;
 	private InMemoryRepository client;
+	private List<String> processedRefs;
 	private ObjectId obj1;
 	private ObjectId obj2;
 	private ObjectId obj3;
@@ -85,16 +54,17 @@ public class PushConnectionTest {
 	public void setUp() throws Exception {
 		server = newRepo("server");
 		client = newRepo("client");
-		testProtocol = new TestProtocol<>(
-				null,
-				new ReceivePackFactory<Object>() {
-					@Override
-					public ReceivePack create(Object req, Repository db)
-							throws ServiceNotEnabledException,
-							ServiceNotAuthorizedException {
-						return new ReceivePack(db);
-					}
-				});
+		processedRefs = new ArrayList<>();
+		testProtocol = new TestProtocol<>(null, (Object req, Repository db) -> {
+			ReceivePack rp = new ReceivePack(db);
+			rp.setPreReceiveHook((ReceivePack receivePack,
+					Collection<ReceiveCommand> cmds) -> {
+				for (ReceiveCommand cmd : cmds) {
+					processedRefs.add(cmd.getRefName());
+				}
+			});
+			return rp;
+		});
 		uri = testProtocol.register(ctx, server);
 
 		try (ObjectInserter ins = server.newObjectInserter()) {
@@ -172,5 +142,72 @@ public class PushConnectionTest {
 						e.getMessage());
 			}
 		}
+	}
+
+	@Test
+	public void limitCommandBytes() throws IOException {
+		Map<String, RemoteRefUpdate> updates = new HashMap<>();
+		for (int i = 0; i < 4; i++) {
+			RemoteRefUpdate rru = new RemoteRefUpdate(
+					null, null, obj2, "refs/test/T" + i,
+					false, null, ObjectId.zeroId());
+			updates.put(rru.getRemoteName(), rru);
+		}
+
+		server.getConfig().setInt("receive", null, "maxCommandBytes", 195);
+		try (Transport tn = testProtocol.open(uri, client, "server");
+				PushConnection connection = tn.openPush()) {
+			try {
+				connection.push(NullProgressMonitor.INSTANCE, updates);
+				fail("server did not abort");
+			} catch (TransportException e) {
+				String msg = e.getMessage();
+				assertEquals(
+						"remote: Commands size exceeds limit defined in receive.maxCommandBytes",
+						msg);
+			}
+		}
+	}
+
+	@Test
+	public void commandOrder() throws Exception {
+		List<RemoteRefUpdate> updates = new ArrayList<>();
+		try (TestRepository<?> tr = new TestRepository<>(client)) {
+			// Arbitrary non-sorted order.
+			for (int i = 9; i >= 0; i--) {
+				String name = "refs/heads/b" + i;
+				tr.branch(name).commit().create();
+				RemoteRefUpdate rru = new RemoteRefUpdate(client, name, name,
+						false, null, ObjectId.zeroId());
+				updates.add(rru);
+			}
+		}
+
+		PushResult result;
+		try (Transport tn = testProtocol.open(uri, client, "server")) {
+			result = tn.push(NullProgressMonitor.INSTANCE, updates);
+		}
+
+		for (RemoteRefUpdate remoteUpdate : result.getRemoteUpdates()) {
+			assertEquals(
+					"update should succeed on " + remoteUpdate.getRemoteName(),
+					RemoteRefUpdate.Status.OK, remoteUpdate.getStatus());
+		}
+
+		List<String> expected = remoteRefNames(updates);
+		assertEquals(
+				"ref names processed by ReceivePack should match input ref names in order",
+				expected, processedRefs);
+		assertEquals(
+				"remote ref names should match input ref names in order",
+				expected, remoteRefNames(result.getRemoteUpdates()));
+	}
+
+	private static List<String> remoteRefNames(Collection<RemoteRefUpdate> updates) {
+		List<String> result = new ArrayList<>();
+		for (RemoteRefUpdate u : updates) {
+			result.add(u.getRemoteName());
+		}
+		return result;
 	}
 }

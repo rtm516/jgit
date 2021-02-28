@@ -1,47 +1,15 @@
 /*
- * Copyright (C) 2011-2013, Chris Aniszczyk <caniszczyk@gmail.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2011-2018, Chris Aniszczyk <caniszczyk@gmail.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.api;
 
+import static java.time.Instant.EPOCH;
 import static org.eclipse.jgit.api.ResetCommand.ResetType.HARD;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -52,7 +20,9 @@ import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -83,6 +53,8 @@ public class ResetCommandTest extends RepositoryTestCase {
 
 	private File indexFile;
 
+	private File indexNestedFile;
+
 	private File untrackedFile;
 
 	private DirCacheEntry prestage;
@@ -94,45 +66,25 @@ public class ResetCommandTest extends RepositoryTestCase {
 		git = new Git(db);
 		initialCommit = git.commit().setMessage("initial commit").call();
 
-		// create nested file
-		File dir = new File(db.getWorkTree(), "dir");
-		FileUtils.mkdir(dir);
-		File nestedFile = new File(dir, "b.txt");
-		FileUtils.createNewFile(nestedFile);
-
-		PrintWriter nesterFileWriter = new PrintWriter(nestedFile);
-		nesterFileWriter.print("content");
-		nesterFileWriter.flush();
-
 		// create file
-		indexFile = new File(db.getWorkTree(), "a.txt");
-		FileUtils.createNewFile(indexFile);
-		PrintWriter writer = new PrintWriter(indexFile);
-		writer.print("content");
-		writer.flush();
+		indexFile = writeTrashFile("a.txt", "content");
 
-		// add file and commit it
-		git.add().addFilepattern("dir").addFilepattern("a.txt").call();
-		secondCommit = git.commit().setMessage("adding a.txt and dir/b.txt")
-				.call();
+		// create nested file
+		indexNestedFile = writeTrashFile("dir/b.txt", "content");
 
-		prestage = DirCache.read(db.getIndexFile(), db.getFS()).getEntry(
-				indexFile.getName());
+		// add files and commit them
+		git.add().addFilepattern("a.txt").addFilepattern("dir/b.txt").call();
+		secondCommit = git.commit().setMessage("adding a.txt and dir/b.txt").call();
 
-		// modify file and add to index
-		writer.print("new content");
-		writer.close();
-		nesterFileWriter.print("new content");
-		nesterFileWriter.close();
-		git.add().addFilepattern("a.txt").addFilepattern("dir").call();
+		prestage = DirCache.read(db.getIndexFile(), db.getFS()).getEntry(indexFile.getName());
+
+		// modify files and add to index
+		writeTrashFile("a.txt", "new content");
+		writeTrashFile("dir/b.txt", "new content");
+		git.add().addFilepattern("a.txt").addFilepattern("dir/b.txt").call();
 
 		// create a file not added to the index
-		untrackedFile = new File(db.getWorkTree(),
-				"notAddedToIndex.txt");
-		FileUtils.createNewFile(untrackedFile);
-		PrintWriter writer2 = new PrintWriter(untrackedFile);
-		writer2.print("content");
-		writer2.close();
+		untrackedFile = writeTrashFile("notAddedToIndex.txt", "content");
 	}
 
 	@Test
@@ -140,13 +92,16 @@ public class ResetCommandTest extends RepositoryTestCase {
 			AmbiguousObjectException, IOException, GitAPIException {
 		setupRepository();
 		ObjectId prevHead = db.resolve(Constants.HEAD);
-		assertSameAsHead(git.reset().setMode(ResetType.HARD)
+		ResetCommand reset = git.reset();
+		assertSameAsHead(reset.setMode(ResetType.HARD)
 				.setRef(initialCommit.getName()).call());
+		assertFalse("reflog should be enabled", reset.isReflogDisabled());
 		// check if HEAD points to initial commit now
 		ObjectId head = db.resolve(Constants.HEAD);
 		assertEquals(initialCommit, head);
 		// check if files were removed
 		assertFalse(indexFile.exists());
+		assertFalse(indexNestedFile.exists());
 		assertTrue(untrackedFile.exists());
 		// fileInIndex must no longer be in HEAD and in the index
 		String fileInIndexPath = indexFile.getAbsolutePath();
@@ -169,6 +124,7 @@ public class ResetCommandTest extends RepositoryTestCase {
 		assertEquals(initialCommit, head);
 		// check if files were removed
 		assertFalse(indexFile.exists());
+		assertFalse(indexNestedFile.exists());
 		assertTrue(untrackedFile.exists());
 		// fileInIndex must no longer be in HEAD and in the index
 		String fileInIndexPath = indexFile.getAbsolutePath();
@@ -179,31 +135,65 @@ public class ResetCommandTest extends RepositoryTestCase {
 	}
 
 	@Test
-	public void testHardResetWithConflicts_DoOverWriteUntrackedFile()
-			throws JGitInternalException,
-			AmbiguousObjectException, IOException, GitAPIException {
+	public void testHardResetWithConflicts_OverwriteUntrackedFile() throws Exception {
 		setupRepository();
+
 		git.rm().setCached(true).addFilepattern("a.txt").call();
 		assertTrue(new File(db.getWorkTree(), "a.txt").exists());
-		git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD)
-				.call();
+
+		git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD).call();
 		assertTrue(new File(db.getWorkTree(), "a.txt").exists());
 		assertEquals("content", read(new File(db.getWorkTree(), "a.txt")));
 	}
 
 	@Test
-	public void testHardResetWithConflicts_DoDeleteFileFolderConflicts()
-			throws JGitInternalException,
-			AmbiguousObjectException, IOException, GitAPIException {
+	public void testHardResetWithConflicts_DeleteFileFolderConflict() throws Exception {
 		setupRepository();
-		writeTrashFile("d/c.txt", "x");
-		git.add().addFilepattern("d/c.txt").call();
-		FileUtils.delete(new File(db.getWorkTree(), "d"), FileUtils.RECURSIVE);
-		writeTrashFile("d", "y");
 
-		git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD)
-				.call();
-		assertFalse(new File(db.getWorkTree(), "d").exists());
+		writeTrashFile("dir-or-file/c.txt", "content");
+		git.add().addFilepattern("dir-or-file/c.txt").call();
+
+		FileUtils.delete(new File(db.getWorkTree(), "dir-or-file"), FileUtils.RECURSIVE);
+		writeTrashFile("dir-or-file", "content");
+
+		git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD).call();
+		assertFalse(new File(db.getWorkTree(), "dir-or-file").exists());
+	}
+
+	@Test
+	public void testHardResetWithConflicts_CreateFolder_UnstagedChanges() throws Exception {
+		setupRepository();
+
+		writeTrashFile("dir-or-file/c.txt", "content");
+		git.add().addFilepattern("dir-or-file/c.txt").call();
+		git.commit().setMessage("adding dir-or-file/c.txt").call();
+
+		FileUtils.delete(new File(db.getWorkTree(), "dir-or-file"), FileUtils.RECURSIVE);
+		writeTrashFile("dir-or-file", "content");
+
+		// bug 479266: cannot create folder "dir-or-file"
+		git.reset().setMode(ResetType.HARD).setRef(Constants.HEAD).call();
+		assertTrue(new File(db.getWorkTree(), "dir-or-file/c.txt").exists());
+	}
+
+	@Test
+	public void testHardResetWithConflicts_DeleteFolder_UnstagedChanges() throws Exception {
+		setupRepository();
+		ObjectId prevHead = db.resolve(Constants.HEAD);
+
+		writeTrashFile("dir-or-file/c.txt", "content");
+		git.add().addFilepattern("dir-or-file/c.txt").call();
+		git.commit().setMessage("adding dir-or-file/c.txt").call();
+
+		writeTrashFile("dir-or-file-2/d.txt", "content");
+		git.add().addFilepattern("dir-or-file-2/d.txt").call();
+		FileUtils.delete(new File(db.getWorkTree(), "dir-or-file-2"), FileUtils.RECURSIVE);
+		writeTrashFile("dir-or-file-2", "content");
+
+		// bug 479266: cannot delete folder "dir-or-file"
+		git.reset().setMode(ResetType.HARD).setRef(prevHead.getName()).call();
+		assertFalse(new File(db.getWorkTree(), "dir-or-file").exists());
+		assertFalse(new File(db.getWorkTree(), "dir-or-file-2").exists());
 	}
 
 	@Test
@@ -269,13 +259,13 @@ public class ResetCommandTest extends RepositoryTestCase {
 	public void testMixedResetRetainsSizeAndModifiedTime() throws Exception {
 		git = new Git(db);
 
-		writeTrashFile("a.txt", "a").setLastModified(
-				System.currentTimeMillis() - 60 * 1000);
+		Files.setLastModifiedTime(writeTrashFile("a.txt", "a").toPath(),
+				FileTime.from(Instant.now().minusSeconds(60)));
 		assertNotNull(git.add().addFilepattern("a.txt").call());
 		assertNotNull(git.commit().setMessage("a commit").call());
 
-		writeTrashFile("b.txt", "b").setLastModified(
-				System.currentTimeMillis() - 60 * 1000);
+		Files.setLastModifiedTime(writeTrashFile("b.txt", "b").toPath(),
+				FileTime.from(Instant.now().minusSeconds(60)));
 		assertNotNull(git.add().addFilepattern("b.txt").call());
 		RevCommit commit2 = git.commit().setMessage("b commit").call();
 		assertNotNull(commit2);
@@ -285,12 +275,12 @@ public class ResetCommandTest extends RepositoryTestCase {
 		DirCacheEntry aEntry = cache.getEntry("a.txt");
 		assertNotNull(aEntry);
 		assertTrue(aEntry.getLength() > 0);
-		assertTrue(aEntry.getLastModified() > 0);
+		assertTrue(aEntry.getLastModifiedInstant().compareTo(EPOCH) > 0);
 
 		DirCacheEntry bEntry = cache.getEntry("b.txt");
 		assertNotNull(bEntry);
 		assertTrue(bEntry.getLength() > 0);
-		assertTrue(bEntry.getLastModified() > 0);
+		assertTrue(bEntry.getLastModifiedInstant().compareTo(EPOCH) > 0);
 
 		assertSameAsHead(git.reset().setMode(ResetType.MIXED)
 				.setRef(commit2.getName()).call());
@@ -299,13 +289,17 @@ public class ResetCommandTest extends RepositoryTestCase {
 
 		DirCacheEntry mixedAEntry = cache.getEntry("a.txt");
 		assertNotNull(mixedAEntry);
-		assertEquals(aEntry.getLastModified(), mixedAEntry.getLastModified());
-		assertEquals(aEntry.getLastModified(), mixedAEntry.getLastModified());
+		assertEquals(aEntry.getLastModifiedInstant(),
+				mixedAEntry.getLastModifiedInstant());
+		assertEquals(aEntry.getLastModifiedInstant(),
+				mixedAEntry.getLastModifiedInstant());
 
 		DirCacheEntry mixedBEntry = cache.getEntry("b.txt");
 		assertNotNull(mixedBEntry);
-		assertEquals(bEntry.getLastModified(), mixedBEntry.getLastModified());
-		assertEquals(bEntry.getLastModified(), mixedBEntry.getLastModified());
+		assertEquals(bEntry.getLastModifiedInstant(),
+				mixedBEntry.getLastModifiedInstant());
+		assertEquals(bEntry.getLastModifiedInstant(),
+				mixedBEntry.getLastModifiedInstant());
 	}
 
 	@Test

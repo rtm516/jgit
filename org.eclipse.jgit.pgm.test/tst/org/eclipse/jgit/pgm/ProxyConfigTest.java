@@ -37,6 +37,7 @@
  */
 package org.eclipse.jgit.pgm;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 
 import java.io.ByteArrayOutputStream;
@@ -203,7 +204,7 @@ public class ProxyConfigTest {
 			while ((length = inputStream.read(buffer)) != -1) {
 				result.write(buffer, 0, length);
 			}
-			return result.toString("UTF-8");
+			return result.toString(UTF_8.name());
 		}
 	}
 }

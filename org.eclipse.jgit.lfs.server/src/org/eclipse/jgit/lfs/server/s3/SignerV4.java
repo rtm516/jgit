@@ -1,54 +1,21 @@
 /*
  * Copyright (C) 2015, Matthias Sohn <matthias.sohn@sap.com>
- * Copyright (C) 2015, Sasa Zivkov <sasa.zivkov@sap.com>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2015, Sasa Zivkov <sasa.zivkov@sap.com> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 package org.eclipse.jgit.lfs.server.s3;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.eclipse.jgit.util.HttpSupport.HDR_AUTHORIZATION;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
@@ -57,6 +24,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.SimpleTimeZone;
 import java.util.SortedMap;
@@ -239,7 +207,7 @@ class SignerV4 {
 
 	private static String canonicalizeHeaderNames(
 			Map<String, String> headers) {
-		List<String> sortedHeaders = new ArrayList<String>();
+		List<String> sortedHeaders = new ArrayList<>();
 		sortedHeaders.addAll(headers.keySet());
 		Collections.sort(sortedHeaders, String.CASE_INSENSITIVE_ORDER);
 
@@ -247,7 +215,7 @@ class SignerV4 {
 		for (String header : sortedHeaders) {
 			if (buffer.length() > 0)
 				buffer.append(";"); //$NON-NLS-1$
-			buffer.append(header.toLowerCase());
+			buffer.append(header.toLowerCase(Locale.ROOT));
 		}
 
 		return buffer.toString();
@@ -259,13 +227,14 @@ class SignerV4 {
 			return ""; //$NON-NLS-1$
 		}
 
-		List<String> sortedHeaders = new ArrayList<String>();
+		List<String> sortedHeaders = new ArrayList<>();
 		sortedHeaders.addAll(headers.keySet());
 		Collections.sort(sortedHeaders, String.CASE_INSENSITIVE_ORDER);
 
 		StringBuilder buffer = new StringBuilder();
 		for (String key : sortedHeaders) {
-			buffer.append(key.toLowerCase().replaceAll("\\s+", " ") + ":" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			buffer.append(
+					key.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ") + ":" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 					+ headers.get(key).replaceAll("\\s+", " ")); //$NON-NLS-1$//$NON-NLS-2$
 			buffer.append("\n"); //$NON-NLS-1$
 		}
@@ -303,7 +272,7 @@ class SignerV4 {
 			return ""; //$NON-NLS-1$
 		}
 
-		SortedMap<String, String> sorted = new TreeMap<String, String>();
+		SortedMap<String, String> sorted = new TreeMap<>();
 
 		Iterator<Map.Entry<String, String>> pairs = parameters.entrySet()
 				.iterator();
@@ -350,20 +319,19 @@ class SignerV4 {
 		String encodedPath = urlEncode(path, true);
 		if (encodedPath.startsWith("/")) { //$NON-NLS-1$
 			return encodedPath;
-		} else {
-			return "/" + encodedPath; //$NON-NLS-1$
 		}
+		return "/" + encodedPath; //$NON-NLS-1$
 	}
 
 	private static byte[] hash(String s) {
 		MessageDigest md = Constants.newMessageDigest();
-		md.update(s.getBytes(StandardCharsets.UTF_8));
+		md.update(s.getBytes(UTF_8));
 		return md.digest();
 	}
 
 	private static byte[] sign(String stringData, byte[] key) {
 		try {
-			byte[] data = stringData.getBytes("UTF-8"); //$NON-NLS-1$
+			byte[] data = stringData.getBytes(UTF_8);
 			Mac mac = Mac.getInstance(HMACSHA256);
 			mac.init(new SecretKeySpec(key, HMACSHA256));
 			return mac.doFinal(data);
@@ -393,7 +361,7 @@ class SignerV4 {
 	private static String urlEncode(String url, boolean keepPathSlash) {
 		String encoded;
 		try {
-			encoded = URLEncoder.encode(url, StandardCharsets.UTF_8.name());
+			encoded = URLEncoder.encode(url, UTF_8.name());
 		} catch (UnsupportedEncodingException e) {
 			throw new RuntimeException(LfsServerText.get().unsupportedUtf8, e);
 		}
@@ -409,7 +377,8 @@ class SignerV4 {
 		String stringToSign = stringToSign(SCHEME, ALGORITHM, dateTimeStamp,
 				scope, canonicalRequest);
 
-		byte[] signature = (SCHEME + bucketConfig.getSecretKey()).getBytes();
+		byte[] signature = (SCHEME + bucketConfig.getSecretKey())
+				.getBytes(UTF_8);
 		signature = sign(dateStamp, signature);
 		signature = sign(bucketConfig.getRegion(), signature);
 		signature = sign(S3, signature);

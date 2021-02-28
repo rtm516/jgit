@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2008, Marek Zawirski <marek.zawirski@gmail.com>
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.transport;
@@ -81,7 +48,8 @@ import org.eclipse.jgit.transport.RemoteRefUpdate.Status;
  * easily wrapped up into a local process pipe, anonymous TCP socket, or a
  * command executed through an SSH tunnel.
  * <p>
- * This implementation honors {@link Transport#isPushThin()} option.
+ * This implementation honors
+ * {@link org.eclipse.jgit.transport.Transport#isPushThin()} option.
  * <p>
  * Concrete implementations should just call
  * {@link #init(java.io.InputStream, java.io.OutputStream)} and
@@ -145,22 +113,23 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 	 * @param packTransport
 	 *            the transport.
 	 */
-	public BasePackPushConnection(final PackTransport packTransport) {
+	public BasePackPushConnection(PackTransport packTransport) {
 		super(packTransport);
 		thinPack = transport.isPushThin();
 		atomic = transport.isPushAtomic();
 		pushOptions = transport.getPushOptions();
 	}
 
+	/** {@inheritDoc} */
+	@Override
 	public void push(final ProgressMonitor monitor,
 			final Map<String, RemoteRefUpdate> refUpdates)
 			throws TransportException {
 		push(monitor, refUpdates, null);
 	}
 
-	/**
-	 * @since 3.0
-	 */
+	/** {@inheritDoc} */
+	@Override
 	public void push(final ProgressMonitor monitor,
 			final Map<String, RemoteRefUpdate> refUpdates, OutputStream outputStream)
 			throws TransportException {
@@ -168,6 +137,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 		doPush(monitor, refUpdates, outputStream);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	protected TransportException noRepository() {
 		// Sadly we cannot tell the "invalid URI" case from "push not allowed".
@@ -200,7 +170,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 	 *            update commands to be applied to the remote repository.
 	 * @param outputStream
 	 *            output stream to write sideband messages to
-	 * @throws TransportException
+	 * @throws org.eclipse.jgit.errors.TransportException
 	 *             if any exception occurs.
 	 * @since 3.0
 	 */
@@ -253,7 +223,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 							pushOptions.toString()));
 		}
 
-		for (final RemoteRefUpdate rru : refUpdates) {
+		for (RemoteRefUpdate rru : refUpdates) {
 			if (!capableDeleteRefs && rru.isDelete()) {
 				rru.setStatus(Status.REJECTED_NODELETE);
 				continue;
@@ -291,7 +261,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 	}
 
 	private void transmitOptions() throws IOException {
-		for (final String pushOption : pushOptions) {
+		for (String pushOption : pushOptions) {
 			pckOut.writeString(pushOption);
 		}
 
@@ -326,20 +296,20 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 
 	private void writePack(final Map<String, RemoteRefUpdate> refUpdates,
 			final ProgressMonitor monitor) throws IOException {
-		Set<ObjectId> remoteObjects = new HashSet<ObjectId>();
-		Set<ObjectId> newObjects = new HashSet<ObjectId>();
+		Set<ObjectId> remoteObjects = new HashSet<>();
+		Set<ObjectId> newObjects = new HashSet<>();
 
-		try (final PackWriter writer = new PackWriter(transport.getPackConfig(),
+		try (PackWriter writer = new PackWriter(transport.getPackConfig(),
 				local.newObjectReader())) {
 
-			for (final Ref r : getRefs()) {
+			for (Ref r : getRefs()) {
 				// only add objects that we actually have
 				ObjectId oid = r.getObjectId();
-				if (local.hasObject(oid))
+				if (local.getObjectDatabase().has(oid))
 					remoteObjects.add(oid);
 			}
 			remoteObjects.addAll(additionalHaves);
-			for (final RemoteRefUpdate r : refUpdates.values()) {
+			for (RemoteRefUpdate r : refUpdates.values()) {
 				if (!ObjectId.zeroId().equals(r.getNewObjectId()))
 					newObjects.add(r.getNewObjectId());
 			}
@@ -362,7 +332,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 		}
 	}
 
-	private void readStatusReport(final Map<String, RemoteRefUpdate> refUpdates)
+	private void readStatusReport(Map<String, RemoteRefUpdate> refUpdates)
 			throws IOException {
 		final String unpackLine = readStringLongTimeout();
 		if (!unpackLine.startsWith("unpack ")) //$NON-NLS-1$
@@ -380,8 +350,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 					JGitText.get().errorOccurredDuringUnpackingOnTheRemoteEnd, unpackStatus));
 		}
 
-		String refLine;
-		while ((refLine = pckIn.readString()) != PacketLineIn.END) {
+		for (String refLine : pckIn.readStrings()) {
 			boolean ok = false;
 			int refNameEnd = -1;
 			if (refLine.startsWith("ok ")) { //$NON-NLS-1$
@@ -389,7 +358,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 				refNameEnd = refLine.length();
 			} else if (refLine.startsWith("ng ")) { //$NON-NLS-1$
 				ok = false;
-				refNameEnd = refLine.indexOf(" ", 3); //$NON-NLS-1$
+				refNameEnd = refLine.indexOf(' ', 3);
 			}
 			if (refNameEnd == -1)
 				throw new PackProtocolException(MessageFormat.format(JGitText.get().unexpectedReportLine2
@@ -408,7 +377,7 @@ public abstract class BasePackPushConnection extends BasePackConnection implemen
 				rru.setMessage(message);
 			}
 		}
-		for (final RemoteRefUpdate rru : refUpdates.values()) {
+		for (RemoteRefUpdate rru : refUpdates.values()) {
 			if (rru.getStatus() == Status.AWAITING_REPORT)
 				throw new PackProtocolException(MessageFormat.format(
 						JGitText.get().expectedReportForRefNotReceived , uri, rru.getRemoteName()));

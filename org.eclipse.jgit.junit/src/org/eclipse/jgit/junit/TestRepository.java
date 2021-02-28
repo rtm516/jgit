@@ -1,48 +1,16 @@
 /*
- * Copyright (C) 2009-2010, Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2009-2010, Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.junit;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
@@ -75,7 +43,7 @@ import org.eclipse.jgit.errors.ObjectWritingException;
 import org.eclipse.jgit.internal.storage.file.FileRepository;
 import org.eclipse.jgit.internal.storage.file.LockFile;
 import org.eclipse.jgit.internal.storage.file.ObjectDirectory;
-import org.eclipse.jgit.internal.storage.file.PackFile;
+import org.eclipse.jgit.internal.storage.file.Pack;
 import org.eclipse.jgit.internal.storage.file.PackIndex.MutableEntry;
 import org.eclipse.jgit.internal.storage.pack.PackWriter;
 import org.eclipse.jgit.lib.AnyObjectId;
@@ -111,14 +79,18 @@ import org.eclipse.jgit.util.FileUtils;
  * @param <R>
  *            type of Repository the test data is stored on.
  */
-public class TestRepository<R extends Repository> {
+public class TestRepository<R extends Repository> implements AutoCloseable {
 
+	/** Constant <code>AUTHOR="J. Author"</code> */
 	public static final String AUTHOR = "J. Author";
 
+	/** Constant <code>AUTHOR_EMAIL="jauthor@example.com"</code> */
 	public static final String AUTHOR_EMAIL = "jauthor@example.com";
 
+	/** Constant <code>COMMITTER="J. Committer"</code> */
 	public static final String COMMITTER = "J. Committer";
 
+	/** Constant <code>COMMITTER_EMAIL="jcommitter@example.com"</code> */
 	public static final String COMMITTER_EMAIL = "jcommitter@example.com";
 
 	private final PersonIdent defaultAuthor;
@@ -185,25 +157,38 @@ public class TestRepository<R extends Repository> {
 		defaultCommitter = new PersonIdent(COMMITTER, COMMITTER_EMAIL, now, tz);
 	}
 
-	/** @return the repository this helper class operates against. */
+	/**
+	 * Get repository
+	 *
+	 * @return the repository this helper class operates against.
+	 */
 	public R getRepository() {
 		return db;
 	}
 
-	/** @return get the RevWalk pool all objects are allocated through. */
+	/**
+	 * Get RevWalk
+	 *
+	 * @return get the RevWalk pool all objects are allocated through.
+	 */
 	public RevWalk getRevWalk() {
 		return pool;
 	}
 
 	/**
+	 * Return Git API wrapper
+	 *
 	 * @return an API wrapper for the underlying repository. This wrapper does
-	 *         not allocate any new resources and need not be closed (but closing
-	 *         it is harmless). */
+	 *         not allocate any new resources and need not be closed (but
+	 *         closing it is harmless).
+	 */
 	public Git git() {
 		return git;
 	}
 
 	/**
+	 * Get date
+	 *
 	 * @return current date.
 	 * @since 4.2
 	 */
@@ -211,7 +196,11 @@ public class TestRepository<R extends Repository> {
 		return new Date(mockSystemReader.getCurrentTime());
 	}
 
-	/** @return timezone used for default identities. */
+	/**
+	 * Get timezone
+	 *
+	 * @return timezone used for default identities.
+	 */
 	public TimeZone getTimeZone() {
 		return mockSystemReader.getTimeZone();
 	}
@@ -222,7 +211,7 @@ public class TestRepository<R extends Repository> {
 	 * @param secDelta
 	 *            number of seconds to add to the current time.
 	 */
-	public void tick(final int secDelta) {
+	public void tick(int secDelta) {
 		mockSystemReader.tick(secDelta);
 	}
 
@@ -245,8 +234,8 @@ public class TestRepository<R extends Repository> {
 	 * @return reference to the blob.
 	 * @throws Exception
 	 */
-	public RevBlob blob(final String content) throws Exception {
-		return blob(content.getBytes("UTF-8"));
+	public RevBlob blob(String content) throws Exception {
+		return blob(content.getBytes(UTF_8));
 	}
 
 	/**
@@ -254,16 +243,16 @@ public class TestRepository<R extends Repository> {
 	 *
 	 * @param content
 	 *            binary file content.
-	 * @return reference to the blob.
+	 * @return the new, fully parsed blob.
 	 * @throws Exception
 	 */
-	public RevBlob blob(final byte[] content) throws Exception {
+	public RevBlob blob(byte[] content) throws Exception {
 		ObjectId id;
 		try (ObjectInserter ins = inserter) {
 			id = ins.insert(Constants.OBJ_BLOB, content);
 			ins.flush();
 		}
-		return pool.lookupBlob(id);
+		return (RevBlob) pool.parseAny(id);
 	}
 
 	/**
@@ -276,7 +265,7 @@ public class TestRepository<R extends Repository> {
 	 * @return the entry.
 	 * @throws Exception
 	 */
-	public DirCacheEntry file(final String path, final RevBlob blob)
+	public DirCacheEntry file(String path, RevBlob blob)
 			throws Exception {
 		final DirCacheEntry e = new DirCacheEntry(path);
 		e.setFileMode(FileMode.REGULAR_FILE);
@@ -290,21 +279,22 @@ public class TestRepository<R extends Repository> {
 	 * @param entries
 	 *            the files to include in the tree. The collection does not need
 	 *            to be sorted properly and may be empty.
-	 * @return reference to the tree specified by the entry list.
+	 * @return the new, fully parsed tree specified by the entry list.
 	 * @throws Exception
 	 */
-	public RevTree tree(final DirCacheEntry... entries) throws Exception {
+	public RevTree tree(DirCacheEntry... entries) throws Exception {
 		final DirCache dc = DirCache.newInCore();
 		final DirCacheBuilder b = dc.builder();
-		for (final DirCacheEntry e : entries)
+		for (DirCacheEntry e : entries) {
 			b.add(e);
+		}
 		b.finish();
 		ObjectId root;
 		try (ObjectInserter ins = inserter) {
 			root = dc.writeTree(ins);
 			ins.flush();
 		}
-		return pool.lookupTree(root);
+		return pool.parseTree(root);
 	}
 
 	/**
@@ -317,7 +307,7 @@ public class TestRepository<R extends Repository> {
 	 * @return the parsed object entry at this path, never null.
 	 * @throws Exception
 	 */
-	public RevObject get(final RevTree tree, final String path)
+	public RevObject get(RevTree tree, String path)
 			throws Exception {
 		try (TreeWalk tw = new TreeWalk(pool.getObjectReader())) {
 			tw.setFilter(PathFilterGroup.createFromStrings(Collections
@@ -338,6 +328,21 @@ public class TestRepository<R extends Repository> {
 	}
 
 	/**
+	 * Create a new, unparsed commit.
+	 * <p>
+	 * See {@link #unparsedCommit(int, RevTree, ObjectId...)}. The tree is the
+	 * empty tree (no files or subdirectories).
+	 *
+	 * @param parents
+	 *            zero or more IDs of the commit's parents.
+	 * @return the ID of the new commit.
+	 * @throws Exception
+	 */
+	public ObjectId unparsedCommit(ObjectId... parents) throws Exception {
+		return unparsedCommit(1, tree(), parents);
+	}
+
+	/**
 	 * Create a new commit.
 	 * <p>
 	 * See {@link #commit(int, RevTree, RevCommit...)}. The tree is the empty
@@ -348,7 +353,7 @@ public class TestRepository<R extends Repository> {
 	 * @return the new commit.
 	 * @throws Exception
 	 */
-	public RevCommit commit(final RevCommit... parents) throws Exception {
+	public RevCommit commit(RevCommit... parents) throws Exception {
 		return commit(1, tree(), parents);
 	}
 
@@ -364,7 +369,7 @@ public class TestRepository<R extends Repository> {
 	 * @return the new commit.
 	 * @throws Exception
 	 */
-	public RevCommit commit(final RevTree tree, final RevCommit... parents)
+	public RevCommit commit(RevTree tree, RevCommit... parents)
 			throws Exception {
 		return commit(1, tree, parents);
 	}
@@ -382,7 +387,7 @@ public class TestRepository<R extends Repository> {
 	 * @return the new commit.
 	 * @throws Exception
 	 */
-	public RevCommit commit(final int secDelta, final RevCommit... parents)
+	public RevCommit commit(int secDelta, RevCommit... parents)
 			throws Exception {
 		return commit(secDelta, tree(), parents);
 	}
@@ -400,11 +405,33 @@ public class TestRepository<R extends Repository> {
 	 *            the root tree for the commit.
 	 * @param parents
 	 *            zero or more parents of the commit.
-	 * @return the new commit.
+	 * @return the new, fully parsed commit.
 	 * @throws Exception
 	 */
 	public RevCommit commit(final int secDelta, final RevTree tree,
 			final RevCommit... parents) throws Exception {
+		ObjectId id = unparsedCommit(secDelta, tree, parents);
+		return pool.parseCommit(id);
+	}
+
+	/**
+	 * Create a new, unparsed commit.
+	 * <p>
+	 * The author and committer identities are stored using the current
+	 * timestamp, after being incremented by {@code secDelta}. The message body
+	 * is empty.
+	 *
+	 * @param secDelta
+	 *            number of seconds to advance {@link #tick(int)} by.
+	 * @param tree
+	 *            the root tree for the commit.
+	 * @param parents
+	 *            zero or more IDs of the commit's parents.
+	 * @return the ID of the new commit.
+	 * @throws Exception
+	 */
+	public ObjectId unparsedCommit(final int secDelta, final RevTree tree,
+			final ObjectId... parents) throws Exception {
 		tick(secDelta);
 
 		final org.eclipse.jgit.lib.CommitBuilder c;
@@ -420,10 +447,14 @@ public class TestRepository<R extends Repository> {
 			id = ins.insert(c);
 			ins.flush();
 		}
-		return pool.lookupCommit(id);
+		return id;
 	}
 
-	/** @return a new commit builder. */
+	/**
+	 * Create commit builder
+	 *
+	 * @return a new commit builder.
+	 */
 	public CommitBuilder commit() {
 		return new CommitBuilder();
 	}
@@ -441,10 +472,10 @@ public class TestRepository<R extends Repository> {
 	 *            with {@code refs/tags/}.
 	 * @param dst
 	 *            object the tag should be pointed at.
-	 * @return the annotated tag object.
+	 * @return the new, fully parsed annotated tag object.
 	 * @throws Exception
 	 */
-	public RevTag tag(final String name, final RevObject dst) throws Exception {
+	public RevTag tag(String name, RevObject dst) throws Exception {
 		final TagBuilder t = new TagBuilder();
 		t.setObjectId(dst);
 		t.setTag(name);
@@ -455,7 +486,7 @@ public class TestRepository<R extends Repository> {
 			id = ins.insert(t);
 			ins.flush();
 		}
-		return (RevTag) pool.lookupAny(id, Constants.OBJ_TAG);
+		return pool.parseTag(id);
 	}
 
 	/**
@@ -587,6 +618,7 @@ public class TestRepository<R extends Repository> {
 	public void delete(String ref) throws Exception {
 		ref = normalizeRef(ref);
 		RefUpdate u = db.updateRef(ref);
+		u.setForceUpdate(true);
 		switch (u.delete()) {
 		case FAST_FORWARD:
 		case FORCED:
@@ -616,7 +648,7 @@ public class TestRepository<R extends Repository> {
 
 	/**
 	 * Soft-reset HEAD to a detached state.
-	 * <p>
+	 *
 	 * @param id
 	 *            ID of detached head.
 	 * @throws Exception
@@ -678,8 +710,8 @@ public class TestRepository<R extends Repository> {
 	 *
 	 * @param id
 	 *            commit-ish to cherry-pick.
-	 * @return newly created commit, or null if no work was done due to the
-	 *         resulting tree being identical.
+	 * @return the new, fully parsed commit, or null if no work was done due to
+	 *         the resulting tree being identical.
 	 * @throws Exception
 	 */
 	public RevCommit cherryPick(AnyObjectId id) throws Exception {
@@ -700,7 +732,7 @@ public class TestRepository<R extends Repository> {
 		ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(db, true);
 		merger.setBase(parent.getTree());
 		if (merger.merge(head, commit)) {
-			if (AnyObjectId.equals(head.getTree(), merger.getResultTreeId()))
+			if (AnyObjectId.isEqual(head.getTree(), merger.getResultTreeId()))
 				return null;
 			tick(1);
 			org.eclipse.jgit.lib.CommitBuilder b =
@@ -717,9 +749,8 @@ public class TestRepository<R extends Repository> {
 			}
 			update(Constants.HEAD, result);
 			return pool.parseCommit(result);
-		} else {
-			throw new IOException("Merge conflict");
 		}
+		throw new IOException("Merge conflict");
 	}
 
 	/**
@@ -730,9 +761,9 @@ public class TestRepository<R extends Repository> {
 	public void updateServerInfo() throws Exception {
 		if (db instanceof FileRepository) {
 			final FileRepository fr = (FileRepository) db;
-			RefWriter rw = new RefWriter(fr.getAllRefs().values()) {
+			RefWriter rw = new RefWriter(fr.getRefDatabase().getRefs()) {
 				@Override
-				protected void writeFile(final String name, final byte[] bin)
+				protected void writeFile(String name, byte[] bin)
 						throws IOException {
 					File path = new File(fr.getDirectory(), name);
 					TestRepository.this.writeFile(path, bin);
@@ -742,7 +773,7 @@ public class TestRepository<R extends Repository> {
 			rw.writeInfoRefs();
 
 			final StringBuilder w = new StringBuilder();
-			for (PackFile p : fr.getObjectDatabase().getPacks()) {
+			for (Pack p : fr.getObjectDatabase().getPacks()) {
 				w.append("P ");
 				w.append(p.getPackFile().getName());
 				w.append('\n');
@@ -756,14 +787,15 @@ public class TestRepository<R extends Repository> {
 	 * Ensure the body of the given object has been parsed.
 	 *
 	 * @param <T>
-	 *            type of object, e.g. {@link RevTag} or {@link RevCommit}.
+	 *            type of object, e.g. {@link org.eclipse.jgit.revwalk.RevTag}
+	 *            or {@link org.eclipse.jgit.revwalk.RevCommit}.
 	 * @param object
 	 *            reference to the (possibly unparsed) object to force body
 	 *            parsing of.
 	 * @return {@code object}
 	 * @throws Exception
 	 */
-	public <T extends RevObject> T parseBody(final T object) throws Exception {
+	public <T extends RevObject> T parseBody(T object) throws Exception {
 		pool.parseBody(object);
 		return object;
 	}
@@ -824,7 +856,7 @@ public class TestRepository<R extends Repository> {
 				for (RevObject o : tips)
 					ow.markStart(ow.parseAny(o));
 			} else {
-				for (Ref r : db.getAllRefs().values())
+				for (Ref r : db.getRefDatabase().getRefs())
 					ow.markStart(ow.parseAny(r.getObjectId()));
 			}
 
@@ -876,8 +908,8 @@ public class TestRepository<R extends Repository> {
 
 			final File pack, idx;
 			try (PackWriter pw = new PackWriter(db)) {
-				Set<ObjectId> all = new HashSet<ObjectId>();
-				for (Ref r : db.getAllRefs().values())
+				Set<ObjectId> all = new HashSet<>();
+				for (Ref r : db.getRefDatabase().getRefs())
 					all.add(r.getObjectId());
 				pw.preparePack(m, all, PackWriter.NONE);
 
@@ -904,19 +936,36 @@ public class TestRepository<R extends Repository> {
 		}
 	}
 
+	/**
+	 * Closes the underlying {@link Repository} object and any other internal
+	 * resources.
+	 * <p>
+	 * {@link AutoCloseable} resources that may escape this object, such as
+	 * those returned by the {@link #git} and {@link #getRevWalk()} methods are
+	 * not closed.
+	 */
+	@Override
+	public void close() {
+		try {
+			inserter.close();
+		} finally {
+			db.close();
+		}
+	}
+
 	private static void prunePacked(ObjectDirectory odb) throws IOException {
-		for (PackFile p : odb.getPacks()) {
+		for (Pack p : odb.getPacks()) {
 			for (MutableEntry e : p)
 				FileUtils.delete(odb.fileFor(e.toObjectId()));
 		}
 	}
 
 	private static File nameFor(ObjectDirectory odb, ObjectId name, String t) {
-		File packdir = new File(odb.getDirectory(), "pack");
+		File packdir = odb.getPackDirectory();
 		return new File(packdir, "pack-" + name.name() + t);
 	}
 
-	private void writeFile(final File p, final byte[] bin) throws IOException,
+	private void writeFile(File p, byte[] bin) throws IOException,
 			ObjectWritingException {
 		final LockFile lck = new LockFile(p);
 		if (!lck.lock())
@@ -924,7 +973,7 @@ public class TestRepository<R extends Repository> {
 		try {
 			lck.write(bin);
 		} catch (IOException ioe) {
-			throw new ObjectWritingException("Can't write " + p);
+			throw new ObjectWritingException("Can't write " + p, ioe);
 		}
 		if (!lck.commit())
 			throw new ObjectWritingException("Can't write " + p);
@@ -934,7 +983,7 @@ public class TestRepository<R extends Repository> {
 	public class BranchBuilder {
 		private final String ref;
 
-		BranchBuilder(final String ref) {
+		BranchBuilder(String ref) {
 			this.ref = ref;
 		}
 
@@ -992,7 +1041,7 @@ public class TestRepository<R extends Repository> {
 
 		private ObjectId topLevelTree;
 
-		private final List<RevCommit> parents = new ArrayList<RevCommit>(2);
+		private final List<RevCommit> parents = new ArrayList<>(2);
 
 		private int tick = 1;
 
@@ -1030,6 +1079,14 @@ public class TestRepository<R extends Repository> {
 			parents.add(prior.create());
 		}
 
+		/**
+		 * set parent commit
+		 *
+		 * @param p
+		 *            parent commit
+		 * @return this commit builder
+		 * @throws Exception
+		 */
 		public CommitBuilder parent(RevCommit p) throws Exception {
 			if (parents.isEmpty()) {
 				DirCacheBuilder b = tree.builder();
@@ -1042,30 +1099,72 @@ public class TestRepository<R extends Repository> {
 			return this;
 		}
 
+		/**
+		 * Get parent commits
+		 *
+		 * @return parent commits
+		 */
 		public List<RevCommit> parents() {
 			return Collections.unmodifiableList(parents);
 		}
 
+		/**
+		 * Remove parent commits
+		 *
+		 * @return this commit builder
+		 */
 		public CommitBuilder noParents() {
 			parents.clear();
 			return this;
 		}
 
+		/**
+		 * Remove files
+		 *
+		 * @return this commit builder
+		 */
 		public CommitBuilder noFiles() {
 			tree.clear();
 			return this;
 		}
 
+		/**
+		 * Set top level tree
+		 *
+		 * @param treeId
+		 *            the top level tree
+		 * @return this commit builder
+		 */
 		public CommitBuilder setTopLevelTree(ObjectId treeId) {
 			topLevelTree = treeId;
 			return this;
 		}
 
+		/**
+		 * Add file with given content
+		 *
+		 * @param path
+		 *            path of the file
+		 * @param content
+		 *            the file content
+		 * @return this commit builder
+		 * @throws Exception
+		 */
 		public CommitBuilder add(String path, String content) throws Exception {
 			return add(path, blob(content));
 		}
 
-		public CommitBuilder add(String path, final RevBlob id)
+		/**
+		 * Add file with given path and blob
+		 *
+		 * @param path
+		 *            path of the file
+		 * @param id
+		 *            blob for this file
+		 * @return this commit builder
+		 * @throws Exception
+		 */
+		public CommitBuilder add(String path, RevBlob id)
 				throws Exception {
 			return edit(new PathEdit(path) {
 				@Override
@@ -1076,6 +1175,13 @@ public class TestRepository<R extends Repository> {
 			});
 		}
 
+		/**
+		 * Edit the index
+		 *
+		 * @param edit
+		 *            the index record update
+		 * @return this commit builder
+		 */
 		public CommitBuilder edit(PathEdit edit) {
 			DirCacheEditor e = tree.editor();
 			e.add(edit);
@@ -1083,6 +1189,13 @@ public class TestRepository<R extends Repository> {
 			return this;
 		}
 
+		/**
+		 * Remove a file
+		 *
+		 * @param path
+		 *            path of the file
+		 * @return this commit builder
+		 */
 		public CommitBuilder rm(String path) {
 			DirCacheEditor e = tree.editor();
 			e.add(new DeletePath(path));
@@ -1091,49 +1204,111 @@ public class TestRepository<R extends Repository> {
 			return this;
 		}
 
+		/**
+		 * Set commit message
+		 *
+		 * @param m
+		 *            the message
+		 * @return this commit builder
+		 */
 		public CommitBuilder message(String m) {
 			message = m;
 			return this;
 		}
 
+		/**
+		 * Get the commit message
+		 *
+		 * @return the commit message
+		 */
 		public String message() {
 			return message;
 		}
 
+		/**
+		 * Tick the clock
+		 *
+		 * @param secs
+		 *            number of seconds
+		 * @return this commit builder
+		 */
 		public CommitBuilder tick(int secs) {
 			tick = secs;
 			return this;
 		}
 
+		/**
+		 * Set author and committer identity
+		 *
+		 * @param ident
+		 *            identity to set
+		 * @return this commit builder
+		 */
 		public CommitBuilder ident(PersonIdent ident) {
 			author = ident;
 			committer = ident;
 			return this;
 		}
 
+		/**
+		 * Set the author identity
+		 *
+		 * @param a
+		 *            the author's identity
+		 * @return this commit builder
+		 */
 		public CommitBuilder author(PersonIdent a) {
 			author = a;
 			return this;
 		}
 
+		/**
+		 * Get the author identity
+		 *
+		 * @return the author identity
+		 */
 		public PersonIdent author() {
 			return author;
 		}
 
+		/**
+		 * Set the committer identity
+		 *
+		 * @param c
+		 *            the committer identity
+		 * @return this commit builder
+		 */
 		public CommitBuilder committer(PersonIdent c) {
 			committer = c;
 			return this;
 		}
 
+		/**
+		 * Get the committer identity
+		 *
+		 * @return the committer identity
+		 */
 		public PersonIdent committer() {
 			return committer;
 		}
 
+		/**
+		 * Insert changeId
+		 *
+		 * @return this commit builder
+		 */
 		public CommitBuilder insertChangeId() {
 			changeId = "";
 			return this;
 		}
 
+		/**
+		 * Insert given changeId
+		 *
+		 * @param c
+		 *            changeId
+		 * @return this commit builder
+		 */
 		public CommitBuilder insertChangeId(String c) {
 			// Validate, but store as a string so we can use "" as a sentinel.
 			ObjectId.fromString(c);
@@ -1141,6 +1316,13 @@ public class TestRepository<R extends Repository> {
 			return this;
 		}
 
+		/**
+		 * Create the commit
+		 *
+		 * @return the new commit
+		 * @throws Exception
+		 *             if creation failed
+		 */
 		public RevCommit create() throws Exception {
 			if (self == null) {
 				TestRepository.this.tick(tick);
@@ -1169,7 +1351,7 @@ public class TestRepository<R extends Repository> {
 					commitId = ins.insert(c);
 					ins.flush();
 				}
-				self = pool.lookupCommit(commitId);
+				self = pool.parseCommit(commitId);
 
 				if (branch != null)
 					branch.update(self);
@@ -1189,7 +1371,7 @@ public class TestRepository<R extends Repository> {
 				firstParentId = parents.get(0);
 
 			ObjectId cid;
-			if (changeId.equals(""))
+			if (changeId.isEmpty())
 				cid = ChangeIdUtil.computeChangeId(c.getTreeId(), firstParentId,
 						c.getAuthor(), c.getCommitter(), message);
 			else
@@ -1201,6 +1383,12 @@ public class TestRepository<R extends Repository> {
 						+ cid.getName() + "\n"); //$NON-NLS-1$
 		}
 
+		/**
+		 * Create child commit builder
+		 *
+		 * @return child commit builder
+		 * @throws Exception
+		 */
 		public CommitBuilder child() throws Exception {
 			return new CommitBuilder(this);
 		}

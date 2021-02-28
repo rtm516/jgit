@@ -1,44 +1,11 @@
 /*
- * Copyright (C) 2009-2010, Google Inc.
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2009-2010, Google Inc. and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.util;
@@ -48,7 +15,9 @@ import java.util.Collection;
 
 import org.eclipse.jgit.internal.JGitText;
 
-/** Miscellaneous string comparison utility methods. */
+/**
+ * Miscellaneous string comparison utility methods.
+ */
 public final class StringUtils {
 	private static final char[] LC;
 
@@ -72,7 +41,7 @@ public final class StringUtils {
 	 *            the input character.
 	 * @return lowercase version of the input.
 	 */
-	public static char toLowerCase(final char c) {
+	public static char toLowerCase(char c) {
 		return c <= 'Z' ? LC[c] : c;
 	}
 
@@ -89,7 +58,7 @@ public final class StringUtils {
 	 * @return a copy of the input string, after converting characters in the
 	 *         range 'A'..'Z' to 'a'..'z'.
 	 */
-	public static String toLowerCase(final String in) {
+	public static String toLowerCase(String in) {
 		final StringBuilder r = new StringBuilder(in.length());
 		for (int i = 0; i < in.length(); i++)
 			r.append(toLowerCase(in.charAt(i)));
@@ -102,10 +71,12 @@ public final class StringUtils {
 	 *
 	 * <p>
 	 * Capitalizes a String changing the first letter to title case as per
-	 * {@link Character#toTitleCase(char)}. No other letters are changed.
+	 * {@link java.lang.Character#toTitleCase(char)}. No other letters are
+	 * changed.
 	 * </p>
-	 *
-	 * A <code>null</code> input String returns <code>null</code>.</p>
+	 * <p>
+	 * A <code>null</code> input String returns <code>null</code>.
+	 * </p>
 	 *
 	 * @param str
 	 *            the String to capitalize, may be null
@@ -117,7 +88,7 @@ public final class StringUtils {
 		if (str == null || (strLen = str.length()) == 0) {
 			return str;
 		}
-		return new StringBuffer(strLen)
+		return new StringBuilder(strLen)
 				.append(Character.toTitleCase(str.charAt(0)))
 				.append(str.substring(1)).toString();
 	}
@@ -134,9 +105,10 @@ public final class StringUtils {
 	 *            second string to compare.
 	 * @return true if a equals b
 	 */
-	public static boolean equalsIgnoreCase(final String a, final String b) {
-		if (a == b)
+	public static boolean equalsIgnoreCase(String a, String b) {
+		if (References.isSameObject(a, b)) {
 			return true;
+		}
 		if (a.length() != b.length())
 			return false;
 		for (int i = 0; i < a.length(); i++) {
@@ -156,9 +128,8 @@ public final class StringUtils {
 	 *            first string to compare.
 	 * @param b
 	 *            second string to compare.
-	 * @return negative, zero or positive if a sorts before, is equal to, or
-	 *         sorts after b.
 	 * @since 2.0
+	 * @return an int.
 	 */
 	public static int compareIgnoreCase(String a, String b) {
 		for (int i = 0; i < a.length() && i < b.length(); i++) {
@@ -179,9 +150,8 @@ public final class StringUtils {
 	 *            first string to compare.
 	 * @param b
 	 *            second string to compare.
-	 * @return negative, zero or positive if a sorts before, is equal to, or
-	 *         sorts after b.
 	 * @since 2.0
+	 * @return an int.
 	 */
 	public static int compareWithCase(String a, String b) {
 		for (int i = 0; i < a.length() && i < b.length(); i++) {
@@ -199,11 +169,11 @@ public final class StringUtils {
 	 * @param stringValue
 	 *            the string to parse.
 	 * @return the boolean interpretation of {@code value}.
-	 * @throws IllegalArgumentException
+	 * @throws java.lang.IllegalArgumentException
 	 *             if {@code value} is not recognized as one of the standard
 	 *             boolean names.
 	 */
-	public static boolean toBoolean(final String stringValue) {
+	public static boolean toBoolean(String stringValue) {
 		if (stringValue == null)
 			throw new NullPointerException(JGitText.get().expectedBooleanStringValue);
 
@@ -230,7 +200,7 @@ public final class StringUtils {
 	 * @return the boolean interpretation of {@code value} or null in case the
 	 *         string does not represent a boolean value
 	 */
-	public static Boolean toBooleanOrNull(final String stringValue) {
+	public static Boolean toBooleanOrNull(String stringValue) {
 		if (stringValue == null)
 			return null;
 
@@ -319,16 +289,21 @@ public final class StringUtils {
 		int o = 0;
 		for (int i = 0; i < buf.length; ++i) {
 			char ch = in.charAt(i);
-			if (ch == '\r') {
+			switch (ch) {
+			case '\r':
 				if (i + 1 < buf.length && in.charAt(i + 1) == '\n') {
 					buf[o++] = ' ';
 					++i;
 				} else
 					buf[o++] = ' ';
-			} else if (ch == '\n')
+				break;
+			case '\n':
 				buf[o++] = ' ';
-			else
+				break;
+			default:
 				buf[o++] = ch;
+				break;
+			}
 		}
 		return new String(buf, 0, o);
 	}

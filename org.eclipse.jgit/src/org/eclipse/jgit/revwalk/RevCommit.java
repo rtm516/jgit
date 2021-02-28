@@ -1,45 +1,12 @@
 /*
  * Copyright (C) 2008-2009, Google Inc.
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
- * and other copyright owners as documented in the project's IP log.
+ * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org> and others
  *
- * This program and the accompanying materials are made available
- * under the terms of the Eclipse Distribution License v1.0 which
- * accompanies this distribution, is reproduced below, and is
- * available at http://www.eclipse.org/org/documents/edl-v10.php
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0 which is available at
+ * https://www.eclipse.org/org/documents/edl-v10.php.
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- * - Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
- *
- * - Redistributions in binary form must reproduce the above
- *   copyright notice, this list of conditions and the following
- *   disclaimer in the documentation and/or other materials provided
- *   with the distribution.
- *
- * - Neither the name of the Eclipse Foundation, Inc. nor the
- *   names of its contributors may be used to endorse or promote
- *   products derived from this software without specific prior
- *   written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 package org.eclipse.jgit.revwalk;
@@ -51,6 +18,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -66,7 +34,9 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.util.RawParseUtils;
 import org.eclipse.jgit.util.StringUtils;
 
-/** A commit reference to a commit in the DAG. */
+/**
+ * A commit reference to a commit in the DAG.
+ */
 public class RevCommit extends RevObject {
 	private static final int STACK_DEPTH = 500;
 
@@ -79,7 +49,8 @@ public class RevCommit extends RevObject {
 	 * will not have their headers loaded.
 	 *
 	 * Applications are discouraged from using this API. Callers usually need
-	 * more than one commit. Use {@link RevWalk#parseCommit(AnyObjectId)} to
+	 * more than one commit. Use
+	 * {@link org.eclipse.jgit.revwalk.RevWalk#parseCommit(AnyObjectId)} to
 	 * obtain a RevCommit from an existing repository.
 	 *
 	 * @param raw
@@ -115,7 +86,7 @@ public class RevCommit extends RevObject {
 	 *            modified by the caller.
 	 * @return the parsed commit, in an isolated revision pool that is not
 	 *         available to the caller.
-	 * @throws IOException
+	 * @throws java.io.IOException
 	 *             in case of RevWalk initialization fails
 	 */
 	public static RevCommit parse(RevWalk rw, byte[] raw) throws IOException {
@@ -145,18 +116,18 @@ public class RevCommit extends RevObject {
 	 * @param id
 	 *            object name for the commit.
 	 */
-	protected RevCommit(final AnyObjectId id) {
+	protected RevCommit(AnyObjectId id) {
 		super(id);
 	}
 
 	@Override
-	void parseHeaders(final RevWalk walk) throws MissingObjectException,
+	void parseHeaders(RevWalk walk) throws MissingObjectException,
 			IncorrectObjectTypeException, IOException {
 		parseCanonical(walk, walk.getCachedBytes(this));
 	}
 
 	@Override
-	void parseBody(final RevWalk walk) throws MissingObjectException,
+	void parseBody(RevWalk walk) throws MissingObjectException,
 			IncorrectObjectTypeException, IOException {
 		if (buffer == null) {
 			buffer = walk.getCachedBytes(this);
@@ -165,10 +136,10 @@ public class RevCommit extends RevObject {
 		}
 	}
 
-	void parseCanonical(final RevWalk walk, final byte[] raw)
-			throws IOException {
-		if (!walk.shallowCommitsInitialized)
-			walk.initializeShallowCommits();
+	void parseCanonical(RevWalk walk, byte[] raw) throws IOException {
+		if (!walk.shallowCommitsInitialized) {
+			walk.initializeShallowCommits(this);
+		}
 
 		final MutableObjectId idBuffer = walk.idBuffer;
 		idBuffer.fromString(raw, 5);
@@ -179,22 +150,27 @@ public class RevCommit extends RevObject {
 			RevCommit[] pList = new RevCommit[1];
 			int nParents = 0;
 			for (;;) {
-				if (raw[ptr] != 'p')
+				if (raw[ptr] != 'p') {
 					break;
+				}
 				idBuffer.fromString(raw, ptr + 7);
 				final RevCommit p = walk.lookupCommit(idBuffer);
-				if (nParents == 0)
+				switch (nParents) {
+				case 0:
 					pList[nParents++] = p;
-				else if (nParents == 1) {
+					break;
+				case 1:
 					pList = new RevCommit[] { pList[0], p };
 					nParents = 2;
-				} else {
+					break;
+				default:
 					if (pList.length <= nParents) {
 						RevCommit[] old = pList;
 						pList = new RevCommit[pList.length + 32];
 						System.arraycopy(old, 0, pList, 0, nParents);
 					}
 					pList[nParents++] = p;
+					break;
 				}
 				ptr += 48;
 			}
@@ -215,11 +191,13 @@ public class RevCommit extends RevObject {
 			commitTime = RawParseUtils.parseBase10(raw, ptr, null);
 		}
 
-		if (walk.isRetainBody())
+		if (walk.isRetainBody()) {
 			buffer = raw;
+		}
 		flags |= PARSED;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public final int getType() {
 		return Constants.OBJ_COMMIT;
@@ -306,7 +284,7 @@ public class RevCommit extends RevObject {
 	 * @param flag
 	 *            the single flag value to carry back onto parents.
 	 */
-	public void carry(final RevFlag flag) {
+	public void carry(RevFlag flag) {
 		final int carry = flags & flag.mask;
 		if (carry != 0)
 			carryFlags(this, carry);
@@ -315,7 +293,7 @@ public class RevCommit extends RevObject {
 	/**
 	 * Time from the "committer " line of the buffer.
 	 *
-	 * @return time, expressed as seconds since the epoch.
+	 * @return commit time
 	 */
 	public final int getCommitTime() {
 		return commitTime;
@@ -346,10 +324,10 @@ public class RevCommit extends RevObject {
 	 *            parent index to obtain. Must be in the range 0 through
 	 *            {@link #getParentCount()}-1.
 	 * @return the specified parent.
-	 * @throws ArrayIndexOutOfBoundsException
+	 * @throws java.lang.ArrayIndexOutOfBoundsException
 	 *             an invalid parent index was specified.
 	 */
-	public final RevCommit getParent(final int nth) {
+	public final RevCommit getParent(int nth) {
 		return parents[nth];
 	}
 
@@ -384,6 +362,34 @@ public class RevCommit extends RevObject {
 	}
 
 	/**
+	 * Parse the gpg signature from the raw buffer.
+	 * <p>
+	 * This method parses and returns the raw content of the gpgsig lines. This
+	 * method is fairly expensive and produces a new byte[] instance on each
+	 * invocation. Callers should invoke this method only if they are certain
+	 * they will need, and should cache the return value for as long as
+	 * necessary to use all information from it.
+	 * <p>
+	 * RevFilter implementations should try to use
+	 * {@link org.eclipse.jgit.util.RawParseUtils} to scan the
+	 * {@link #getRawBuffer()} instead, as this will allow faster evaluation of
+	 * commits.
+	 *
+	 * @return contents of the gpg signature; null if the commit was not signed.
+	 * @since 5.1
+	 */
+	public final byte[] getRawGpgSignature() {
+		final byte[] raw = buffer;
+		final byte[] header = {'g', 'p', 'g', 's', 'i', 'g'};
+		final int start = RawParseUtils.headerStart(header, raw, 0);
+		if (start < 0) {
+			return null;
+		}
+		final int end = RawParseUtils.headerEnd(raw, start);
+		return Arrays.copyOfRange(raw, start, end);
+	}
+
+	/**
 	 * Parse the author identity from the raw buffer.
 	 * <p>
 	 * This method parses and returns the content of the author line, after
@@ -394,9 +400,10 @@ public class RevCommit extends RevObject {
 	 * should cache the return value for as long as necessary to use all
 	 * information from it.
 	 * <p>
-	 * RevFilter implementations should try to use {@link RawParseUtils} to scan
-	 * the {@link #getRawBuffer()} instead, as this will allow faster evaluation
-	 * of commits.
+	 * RevFilter implementations should try to use
+	 * {@link org.eclipse.jgit.util.RawParseUtils} to scan the
+	 * {@link #getRawBuffer()} instead, as this will allow faster evaluation of
+	 * commits.
 	 *
 	 * @return identity of the author (name, email) and the time the commit was
 	 *         made by the author; null if no author line was found.
@@ -420,9 +427,10 @@ public class RevCommit extends RevObject {
 	 * should cache the return value for as long as necessary to use all
 	 * information from it.
 	 * <p>
-	 * RevFilter implementations should try to use {@link RawParseUtils} to scan
-	 * the {@link #getRawBuffer()} instead, as this will allow faster evaluation
-	 * of commits.
+	 * RevFilter implementations should try to use
+	 * {@link org.eclipse.jgit.util.RawParseUtils} to scan the
+	 * {@link #getRawBuffer()} instead, as this will allow faster evaluation of
+	 * commits.
 	 *
 	 * @return identity of the committer (name, email) and the time the commit
 	 *         was made by the committer; null if no committer line was found.
@@ -484,7 +492,7 @@ public class RevCommit extends RevObject {
 		return str;
 	}
 
-	static boolean hasLF(final byte[] r, int b, final int e) {
+	static boolean hasLF(byte[] r, int b, int e) {
 		while (b < e)
 			if (r[b++] == '\n')
 				return true;
@@ -565,7 +573,7 @@ public class RevCommit extends RevObject {
 			ptr--;
 
 		final int msgB = RawParseUtils.commitMessage(raw, 0);
-		final ArrayList<FooterLine> r = new ArrayList<FooterLine>(4);
+		final ArrayList<FooterLine> r = new ArrayList<>(4);
 		final Charset enc = guessEncoding();
 		for (;;) {
 			ptr = RawParseUtils.prevLF(raw, ptr);
@@ -609,7 +617,7 @@ public class RevCommit extends RevObject {
 	 *         with the specified key, or there are no footers at all.
 	 * @see #getFooterLines()
 	 */
-	public final List<String> getFooterLines(final String keyName) {
+	public final List<String> getFooterLines(String keyName) {
 		return getFooterLines(new FooterKey(keyName));
 	}
 
@@ -624,12 +632,12 @@ public class RevCommit extends RevObject {
 	 *         with the specified key, or there are no footers at all.
 	 * @see #getFooterLines()
 	 */
-	public final List<String> getFooterLines(final FooterKey keyName) {
+	public final List<String> getFooterLines(FooterKey keyName) {
 		final List<FooterLine> src = getFooterLines();
 		if (src.isEmpty())
 			return Collections.emptyList();
-		final ArrayList<String> r = new ArrayList<String>(src.size());
-		for (final FooterLine f : src) {
+		final ArrayList<String> r = new ArrayList<>(src.size());
+		for (FooterLine f : src) {
 			if (f.matches(keyName))
 				r.add(f.getValue());
 		}
@@ -654,7 +662,7 @@ public class RevCommit extends RevObject {
 	 * time in {@link #getCommitTime()}. Accessing other properties such as
 	 * {@link #getAuthorIdent()}, {@link #getCommitterIdent()} or either message
 	 * function requires reloading the buffer by invoking
-	 * {@link RevWalk#parseBody(RevObject)}.
+	 * {@link org.eclipse.jgit.revwalk.RevWalk#parseBody(RevObject)}.
 	 *
 	 * @since 4.0
 	 */
@@ -662,6 +670,7 @@ public class RevCommit extends RevObject {
 		buffer = null;
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public String toString() {
 		final StringBuilder s = new StringBuilder();
